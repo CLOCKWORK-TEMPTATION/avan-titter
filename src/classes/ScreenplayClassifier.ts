@@ -48,18 +48,19 @@ export class ScreenplayClassifier {
   static readonly INOUT_PART = "(?:داخلي|خارجي|د\\.|خ\\.)";
   static readonly TIME_PART =
     "(?:ليل|نهار|ل\\.|ن\\.|صباح|مساء|فجر|ظهر|عصر|مغرب|عشاء|الغروب|الفجر)";
+  
+  // Flexible regex to match complex combinations like "Day - Night / Ext"
+  static readonly HEADER_PART_ANY = `(?:${ScreenplayClassifier.INOUT_PART}|${ScreenplayClassifier.TIME_PART})`;
   static readonly TL_REGEX = new RegExp(
-    "(?:" +
-    ScreenplayClassifier.INOUT_PART +
-    "\\s*[-/]?\\s*" +
-    ScreenplayClassifier.TIME_PART +
-    "\\s*|" +
-    ScreenplayClassifier.TIME_PART +
-    "\\s*[-/]?\\s*" +
-    ScreenplayClassifier.INOUT_PART +
-    ")",
+    `(?:${ScreenplayClassifier.HEADER_PART_ANY}\\s*[-/&]\\s*)+${ScreenplayClassifier.HEADER_PART_ANY}|${ScreenplayClassifier.HEADER_PART_ANY}\\s*[-/&]\\s*${ScreenplayClassifier.HEADER_PART_ANY}`,
     "i"
   );
+  
+  static readonly PHOTOMONTAGE_RE = /^\s*[\(\)]*\s*(?:فوتو\s*مونتاج|Photomontage)\s*[\(\)]*\s*$/i;
+  static readonly PHOTOMONTAGE_PART_RE = /^\s*[\(\)]*\s*(?:فوتو\s*مونتاج|Photomontage)\s*[\(\)]*/i;
+
+  static readonly KNOWN_PLACES_RE = /^(مسجد|بيت|منزل|شارع|حديقة|مدرسة|جامعة|مكتب|محل|مستشفى|مطعم|فندق|سيارة|غرفة|قاعة|ممر|سطح|ساحة|مقبرة|مخبز|مكتبة|نهر|بحر|جبل|غابة|سوق|مصنع|بنك|محكمة|سجن|موقف|محطة|مطار|ميناء|كوبرى|نفق|مبنى|قصر|قصر عدلي|فندق|نادي|ملعب|ملهى|بار|كازينو|متحف|مسرح|سينما|معرض|مزرعة|مصنع|مختبر|مستودع|محل|مطعم|مقهى|موقف|مكتب|شركة|كهف|الكهف|غرفة الكهف|كهف المرايا)/i;
+
   static readonly CHARACTER_RE = new RegExp(
     "^\\s*(?:صوت\\s+)?[" +
     ScreenplayClassifier.AR_AB_LETTER +
@@ -91,9 +92,7 @@ export class ScreenplayClassifier {
         time: new RegExp(ScreenplayClassifier.TIME_PART, "i"),
         inOut: new RegExp(ScreenplayClassifier.INOUT_PART, "i"),
       },
-      sceneHeader3: c(
-        /^(مسجد|بيت|منزل|شارع|حديقة|مدرسة|جامعة|مكتب|محل|مستشفى|مطعم|فندق|سيارة|غرفة|قاعة|ممر|سطح|ساحة|مقبرة|مخبز|مكتبة|نهر|بحر|جبل|غابة|سوق|مصنع|بنك|محكمة|سجن|موقف|محطة|مطار|ميناء|كوبرى|نفق|مبنى|قصر|قصر عدلي|فندق|نادي|ملعب|ملهى|بار|كازينو|متحف|مسرح|سينما|معرض|مزرعة|مصنع|مختبر|مستودع|محل|مطعم|مقهى|موقف|مكتب|شركة|كهف|الكهف|غرفة الكهف|كهف المرايا)/i
-      ),
+      sceneHeader3: c(ScreenplayClassifier.KNOWN_PLACES_RE),
     };
   }
 
@@ -193,9 +192,22 @@ export class ScreenplayClassifier {
     const prefixMatch = cleaned.match(/^\s*(مشهد|م\.|scene)\s*/i);
     const prefix = (prefixMatch?.[1] || "مشهد").trim();
     const num = (m[1] || "").trim();
-    const sceneNum = `${prefix} ${num}`.replace(/\s+/g, " ").trim();
+    let sceneNum = `${prefix} ${num}`.replace(/\s+/g, " ").trim();
 
-    const rest = (m[2] || "").trim();
+    let rest = (m[2] || "").trim();
+    
+    // Check for Photomontage in the rest of the line
+    const pmMatch = rest.match(ScreenplayClassifier.PHOTOMONTAGE_PART_RE);
+    if (pmMatch) {
+      const pmText = pmMatch[0].trim();
+      // Clean up: remove all existing parens and wrap cleanly
+      const inner = pmText.replace(/^[\(\)]+|[\(\)]+$/g, "").trim();
+      const formattedPm = `(${inner})`;
+      
+      sceneNum = `${sceneNum} ${formattedPm}`;
+      rest = rest.substring(pmMatch[0].length).trim();
+    }
+
     if (!rest) {
       return { sceneNum, timeLocation: null, placeInline: null };
     }
@@ -247,41 +259,84 @@ export class ScreenplayClassifier {
     const placeParts: string[] = [];
     if (parsed.placeInline) placeParts.push(parsed.placeInline);
 
+    let currentSceneNum = parsed.sceneNum;
     let consumedLines = 1;
+
     for (let i = startIndex + 1; i < lines.length; i++) {
       const rawNext = lines[i] || "";
       if (ScreenplayClassifier.isBlank(rawNext)) break;
 
-      const next = ScreenplayClassifier.normalizeLine(rawNext);
+      let next = ScreenplayClassifier.normalizeLine(rawNext);
       if (!next) break;
+
+      // 1. Check for Photomontage at the start of the line
+      const pmMatch = next.match(ScreenplayClassifier.PHOTOMONTAGE_PART_RE);
+      if (pmMatch) {
+        const pmText = pmMatch[0].trim();
+        // Clean up: remove all existing parens and wrap cleanly
+        const inner = pmText.replace(/^[\(\)]+|[\(\)]+$/g, "").trim();
+        const formattedPm = `(${inner})`;
+        
+        currentSceneNum = `${currentSceneNum} ${formattedPm}`;
+        
+        // Remove the photomontage part from 'next' to process the rest
+        let remainder = next.substring(pmMatch[0].length);
+        remainder = ScreenplayClassifier.cleanupSceneHeaderRemainder(remainder); // Removes leading dashes/spaces
+        
+        if (!remainder) {
+          consumedLines++;
+          continue;
+        }
+        
+        // Update 'next' with the remainder to be processed by subsequent checks (TL, Place, etc.)
+        // We do NOT increment consumedLines here because we are technically still on the same line index 'i',
+        // but we have 'consumed' the PM part. 
+        // Actually, we ARE on line 'i'. If we finish processing 'remainder' as a place, we are done with line 'i'.
+        // So we should update 'next' and let it fall through.
+        next = remainder;
+        
+        // Note: We don't continue; we let the rest of the logic handle 'next' (the place).
+      }
+
+      // 2. Prepare text for Time/Location check (handle parentheses)
+
+      // 2. Prepare text for Time/Location check (handle parentheses)
+      let textToCheck = next;
+      const isParenthesized = next.startsWith("(") && next.endsWith(")");
+      if (isParenthesized) {
+        textToCheck = next.slice(1, -1).trim();
+      }
 
       const timeLocationIsInOutOnly = !!timeLocation && inOutOnlyRe.test(timeLocation);
       const timeLocationIsTimeOnly = !!timeLocation && timeOnlyRe.test(timeLocation);
+      
+      // If we don't have a complete TL yet, check if this line provides it
       if (!timeLocation || timeLocationIsInOutOnly || timeLocationIsTimeOnly) {
         const tlOnlyRe = new RegExp(
           `^\\s*${ScreenplayClassifier.TL_REGEX.source}\\s*$`,
           "i"
         );
-        if (tlOnlyRe.test(next)) {
-          timeLocation = next.trim();
+
+        if (tlOnlyRe.test(textToCheck)) {
+          timeLocation = textToCheck; // Use the inner text if parenthesized? Or the whole line? usually inner for T/L
           consumedLines++;
           continue;
         }
 
-        if (!timeLocation && (inOutOnlyRe.test(next) || timeOnlyRe.test(next))) {
-          timeLocation = next.trim();
+        if (!timeLocation && (inOutOnlyRe.test(textToCheck) || timeOnlyRe.test(textToCheck))) {
+          timeLocation = textToCheck;
           consumedLines++;
           continue;
         }
 
-        if (timeLocationIsInOutOnly && timeOnlyRe.test(next)) {
-          timeLocation = `${timeLocation.trim()} - ${next.trim()}`;
+        if (timeLocationIsInOutOnly && timeOnlyRe.test(textToCheck)) {
+          timeLocation = `${timeLocation.trim()} - ${textToCheck}`;
           consumedLines++;
           continue;
         }
 
-        if (timeLocationIsTimeOnly && inOutOnlyRe.test(next)) {
-          timeLocation = `${next.trim()} - ${timeLocation.trim()}`;
+        if (timeLocationIsTimeOnly && inOutOnlyRe.test(textToCheck)) {
+          timeLocation = `${textToCheck} - ${timeLocation.trim()}`;
           consumedLines++;
           continue;
         }
@@ -289,16 +344,39 @@ export class ScreenplayClassifier {
 
       if (ScreenplayClassifier.isSceneHeaderStart(next)) break;
       if (ScreenplayClassifier.isTransition(next)) break;
-      if (ScreenplayClassifier.isParenShaped(next)) break;
+      if (ScreenplayClassifier.isParenShaped(next) && !isParenthesized) break;
       if (ScreenplayClassifier.parseInlineCharacterDialogue(next)) break;
 
-      if (
-        ScreenplayClassifier.isCharacterLine(next, {
-          lastFormat: "action",
-          isInDialogueBlock: false,
-        })
-      ) {
-        break;
+      // Check for Known Place (Scene Header 3) - Prioritize over Character
+      if (ScreenplayClassifier.KNOWN_PLACES_RE.test(next)) {
+        placeParts.push(next);
+        consumedLines++;
+        continue;
+      }
+
+      const isChar = ScreenplayClassifier.isCharacterLine(next, {
+        lastFormat: "action",
+        isInDialogueBlock: false,
+      });
+
+      if (isChar) {
+        // If it has a colon, it's definitely a character (or specific format). Break.
+        if (next.includes(":") || next.includes("：")) {
+          break;
+        }
+        
+        // If NO colon, it's ambiguous (Arabic text).
+        // If we haven't found a place yet, and we have a header/TL, treat it as a Place.
+        // This covers cases like "منزل عبد العزيز" even if "منزل" wasn't in the list (though it is).
+        // It also covers "Cairo" or other proper nouns used as places.
+        // But we must be careful not to consume a Character name if the Place was implicit or missing.
+        // Heuristic: If we already have some place parts, maybe break? 
+        // Or just assume anything following T/L that isn't an obvious Action/Transition/SceneHeader IS part of the place.
+        
+        // Let's assume if it looks like a character (short, no colon) BUT we are in the header block, it's a place.
+        placeParts.push(next);
+        consumedLines++;
+        continue;
       }
 
       if (ScreenplayClassifier.isLikelyAction(next)) break;
@@ -329,11 +407,10 @@ export class ScreenplayClassifier {
       .join(" - ");
 
     // تنظيف رقم المشهد والوقت/المكان من الرموز الزائدة
-    const sceneNum = parsed.sceneNum;
     const cleanedTimeLocation = ScreenplayClassifier.normalizeLine(timeLocation);
 
     return {
-      sceneNum: ScreenplayClassifier.normalizeLine(sceneNum),
+      sceneNum: ScreenplayClassifier.normalizeLine(currentSceneNum),
       timeLocation: cleanedTimeLocation,
       place,
       consumedLines,
@@ -450,10 +527,16 @@ export class ScreenplayClassifier {
   }
 
   static getEnterSpacingRule(prevType: string, nextType: string): boolean | null {
+    if (
+      prevType === "basmala" &&
+      (nextType === "scene-header-1" || nextType === "scene-header-top-line")
+    ) {
+      return true;
+    }
     if (prevType === "scene-header-3" && nextType === "action") return true;
-    if (prevType === "action" && nextType === "action") return false;
+    if (prevType === "action" && nextType === "action") return true;
     if (prevType === "action" && nextType === "character") return true;
-    if (prevType === "character" && nextType === "dialogue") return false;
+    if (prevType === "character" && nextType === "dialogue") return true;
     if (prevType === "dialogue" && nextType === "character") return true;
     if (prevType === "dialogue" && nextType === "action") return true;
     if (prevType === "dialogue" && nextType === "transition") return true;
@@ -670,7 +753,7 @@ export class ScreenplayClassifier {
     // 2. فحص السياق (Context)
 
     // Scene Header 3 (مكان فرعي)
-    if (prevType && ['scene-header-1', 'scene-header-2'].includes(prevType)) {
+    if (prevType && ['scene-header-1', 'scene-header-2', 'scene-header-top-line'].includes(prevType)) {
       const wordCount = current.split(' ').length;
       const hasColon = current.includes(":") || current.includes("：");
       console.log(`  ✅ Scene-Header-3 Check: WordCount=${wordCount}, HasColon=${hasColon}`);
@@ -928,7 +1011,7 @@ export class ScreenplayClassifier {
     // 7. ليس رأس مشهد (20 نقطة سلبية إذا كان)
     if (this.isSceneHeaderStart(normalized)) {
       score -= 20;
-      reasons.push('يبدو كرأس مشهد (سالب)');
+      reasons.push('يبدو كرأس مشهد (سالب)'); 
     }
 
     // 8. السطر التالي ليس شخصية أو ملاحظة (10 نقاط)
