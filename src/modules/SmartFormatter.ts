@@ -24,7 +24,7 @@ export class SmartFormatter {
     const fullText = editorElement.innerText || "";
     
     // 2. تشغيل التصنيف الهجين (محتوى + سياق) محلياً
-    let classifiedLines = ScreenplayClassifier.classifyBatch(fullText);
+    let classifiedLines = ScreenplayClassifier.classifyBatch(fullText, true);
 
     // 3. (اختياري) تشغيل الـ AI للمراجعة
     const aiSystem = new SmartImportSystem();

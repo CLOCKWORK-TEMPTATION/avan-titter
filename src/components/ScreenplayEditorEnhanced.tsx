@@ -108,6 +108,7 @@ import {
 } from "lucide-react";
 import AdvancedAgentsPopup from "./AdvancedAgentsPopup";
 import ExportDialog from "./ExportDialog";
+import MainHeader from "./MainHeader";
 import { applyRegexReplacementToTextNodes } from "../modules/domTextReplacement";
 import { AIWritingAssistant } from "../classes/AIWritingAssistant";
 import { ScreenplayClassifier } from "../classes/ScreenplayClassifier";
@@ -181,7 +182,7 @@ export default function ScreenplayEditorEnhanced() {
   const [htmlContent, setHtmlContent] = useState("");
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [currentFormat, setCurrentFormat] = useState("action");
-  const [selectedFont, setSelectedFont] = useState("Cairo");
+  const [selectedFont, setSelectedFont] = useState("AzarMehrMonospaced-San");
   const [selectedSize, setSelectedSize] = useState("12pt");
   const [documentStats, setDocumentStats] = useState({
     characters: 0,
@@ -234,7 +235,7 @@ export default function ScreenplayEditorEnhanced() {
 
   // getFormatStyles - تم نقله إلى ../helpers/getFormatStyles.ts
   const getFormatStyles = (formatType: string): React.CSSProperties => {
-    return getFormatStylesHelper(formatType, selectedSize);
+    return getFormatStylesHelper(formatType, selectedSize, selectedFont);
   };
 
   const isCurrentElementEmpty = () => {
@@ -461,325 +462,430 @@ export default function ScreenplayEditorEnhanced() {
       className={`min-h-screen ${isDarkMode ? "dark bg-gray-900 text-white" : "bg-white text-black"}`}
       dir="rtl"
     >
-      <header className="border-b border-gray-700 bg-gray-800 text-white sticky top-0 z-10">
-        <div className="flex items-center justify-between p-2">
-          <div className="flex items-center space-x-2">
-            <Film className="text-blue-500" />
-            <h1 className="text-xl font-bold">محرر السيناريو العربي</h1>
+      {/* Header with Glass Morphism */}
+      <header className="border-b border-white/10 bg-gradient-to-b from-slate-900/90 to-slate-900/70 text-white sticky top-0 z-10 backdrop-blur-xl shadow-2xl shadow-black/20">
+        <div className="flex items-center justify-between px-4 py-3">
+          {/* Logo Section */}
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full"></div>
+              <div className="relative p-2.5 rounded-2xl bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/30">
+                <Film className="text-blue-400 w-5 h-5" />
+              </div>
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight bg-gradient-to-l from-white to-white/70 bg-clip-text text-transparent">
+                النسخة
+              </h1>
+              <p className="text-xs text-white/50 font-medium tracking-wide">أڨان تيتر</p>
+            </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2">
+            {/* Theme Toggle */}
             <button
               onClick={toggleDarkMode}
-              className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+              className="group relative p-2.5 rounded-xl hover:bg-white/10 transition-all duration-300"
               title={isDarkMode ? "الوضع النهاري" : "الوضع الليلي"}
             >
-              {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 to-blue-500/0 group-hover:from-blue-500/20 group-hover:to-blue-500/10 rounded-xl transition-all duration-300"></div>
+              {isDarkMode ? <Sun size={18} className="relative" /> : <Moon size={18} className="relative" />}
             </button>
 
+            {/* File Menu */}
             <div className="relative">
               <button
                 onClick={() => setShowFileMenu(!showFileMenu)}
-                className="px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
+                className="px-4 py-2.5 rounded-xl hover:bg-white/10 transition-all duration-300 flex items-center gap-2 text-sm font-medium"
               >
-                ملف <ChevronDown size={16} className="mr-1" />
+                ملف
+                <ChevronDown size={14} className={`transition-transform duration-200 ${showFileMenu ? 'rotate-180' : ''}`} />
               </button>
 
               {showFileMenu && (
-                <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-20">
-                  <button className="block w-full text-right px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center">
-                    <FilePlus size={16} className="ml-2" /> جديد
-                  </button>
-                  <button className="block w-full text-right px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center">
-                    <FolderOpen size={16} className="ml-2" /> فتح
-                  </button>
-                  <button className="block w-full text-right px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center">
-                    <Save size={16} className="ml-2" /> حفظ
-                  </button>
-                  <button className="block w-full text-right px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center">
-                    <Download size={16} className="ml-2" /> تصدير
-                  </button>
+                <div className="absolute right-0 mt-2 w-52 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-20">
+                  <div className="p-1.5 space-y-0.5">
+                    <button className="w-full text-right px-3 py-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 flex items-center gap-3 text-sm group">
+                      <div className="p-1.5 rounded-lg bg-blue-500/20 group-hover:bg-blue-500/30 transition-colors">
+                        <FilePlus size={14} className="text-blue-400" />
+                      </div>
+                      <span className="text-white/90 group-hover:text-white transition-colors">جديد</span>
+                    </button>
+                    <button className="w-full text-right px-3 py-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 flex items-center gap-3 text-sm group">
+                      <div className="p-1.5 rounded-lg bg-emerald-500/20 group-hover:bg-emerald-500/30 transition-colors">
+                        <FolderOpen size={14} className="text-emerald-400" />
+                      </div>
+                      <span className="text-white/90 group-hover:text-white transition-colors">فتح</span>
+                    </button>
+                    <button className="w-full text-right px-3 py-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 flex items-center gap-3 text-sm group">
+                      <div className="p-1.5 rounded-lg bg-violet-500/20 group-hover:bg-violet-500/30 transition-colors">
+                        <Save size={14} className="text-violet-400" />
+                      </div>
+                      <span className="text-white/90 group-hover:text-white transition-colors">حفظ</span>
+                    </button>
+                    <button className="w-full text-right px-3 py-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 flex items-center gap-3 text-sm group">
+                      <div className="p-1.5 rounded-lg bg-amber-500/20 group-hover:bg-amber-500/30 transition-colors">
+                        <Download size={14} className="text-amber-400" />
+                      </div>
+                      <span className="text-white/90 group-hover:text-white transition-colors">تصدير</span>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
 
+            {/* Edit Menu */}
             <div className="relative">
               <button
                 onClick={() => setShowEditMenu(!showEditMenu)}
-                className="px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
+                className="px-4 py-2.5 rounded-xl hover:bg-white/10 transition-all duration-300 flex items-center gap-2 text-sm font-medium"
               >
-                تحرير <ChevronDown size={16} className="mr-1" />
+                تحرير
+                <ChevronDown size={14} className={`transition-transform duration-200 ${showEditMenu ? 'rotate-180' : ''}`} />
               </button>
 
               {showEditMenu && (
-                <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-20">
-                  <button className="block w-full text-right px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center">
-                    <Undo size={16} className="ml-2" /> تراجع
-                  </button>
-                  <button className="block w-full text-right px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center">
-                    <Redo size={16} className="ml-2" /> إعادة
-                  </button>
-                  <button className="block w-full text-right px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center">
-                    <Scissors size={16} className="ml-2" /> قص
-                  </button>
-                  <button className="block w-full text-right px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center">
-                    <Copy size={16} className="ml-2" /> نسخ
-                  </button>
+                <div className="absolute right-0 mt-2 w-52 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-20">
+                  <div className="p-1.5 space-y-0.5">
+                    <button className="w-full text-right px-3 py-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 flex items-center gap-3 text-sm group">
+                      <div className="p-1.5 rounded-lg bg-slate-500/20 group-hover:bg-slate-500/30 transition-colors">
+                        <Undo size={14} className="text-slate-400" />
+                      </div>
+                      <span className="text-white/90 group-hover:text-white transition-colors">تراجع</span>
+                    </button>
+                    <button className="w-full text-right px-3 py-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 flex items-center gap-3 text-sm group">
+                      <div className="p-1.5 rounded-lg bg-slate-500/20 group-hover:bg-slate-500/30 transition-colors">
+                        <Redo size={14} className="text-slate-400" />
+                      </div>
+                      <span className="text-white/90 group-hover:text-white transition-colors">إعادة</span>
+                    </button>
+                    <button className="w-full text-right px-3 py-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 flex items-center gap-3 text-sm group">
+                      <div className="p-1.5 rounded-lg bg-rose-500/20 group-hover:bg-rose-500/30 transition-colors">
+                        <Scissors size={14} className="text-rose-400" />
+                      </div>
+                      <span className="text-white/90 group-hover:text-white transition-colors">قص</span>
+                    </button>
+                    <button className="w-full text-right px-3 py-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 flex items-center gap-3 text-sm group">
+                      <div className="p-1.5 rounded-lg bg-cyan-500/20 group-hover:bg-cyan-500/30 transition-colors">
+                        <Copy size={14} className="text-cyan-400" />
+                      </div>
+                      <span className="text-white/90 group-hover:text-white transition-colors">نسخ</span>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
 
+            {/* Format Menu */}
             <div className="relative">
               <button
                 onClick={() => setShowFormatMenu(!showFormatMenu)}
-                className="px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
+                className="px-4 py-2.5 rounded-xl hover:bg-white/10 transition-all duration-300 flex items-center gap-2 text-sm font-medium"
               >
-                تنسيق <ChevronDown size={16} className="mr-1" />
+                تنسيق
+                <ChevronDown size={14} className={`transition-transform duration-200 ${showFormatMenu ? 'rotate-180' : ''}`} />
               </button>
 
               {showFormatMenu && (
-                <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-20">
-                  <button
-                    onClick={() =>
-                      applyFormatToCurrentLine("scene-header-top-line")
-                    }
-                    className="block w-full text-right px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    عنوان المشهد العلوي
-                  </button>
-                  <button
-                    onClick={() => applyFormatToCurrentLine("scene-header-3")}
-                    className="block w-full text-right px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    عنوان المشهد
-                  </button>
-                  <button
-                    onClick={() => applyFormatToCurrentLine("action")}
-                    className="block w-full text-right px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    وصف الأفعال
-                  </button>
-                  <button
-                    onClick={() => applyFormatToCurrentLine("character")}
-                    className="block w-full text-right px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    الشخصية
-                  </button>
-                  <button
-                    onClick={() => applyFormatToCurrentLine("dialogue")}
-                    className="block w-full text-right px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    الحوار
-                  </button>
-                  <button
-                    onClick={() => applyFormatToCurrentLine("transition")}
-                    className="block w-full text-right px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    الانتقال
-                  </button>
+                <div className="absolute right-0 mt-2 w-56 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-20">
+                  <div className="p-1.5 space-y-0.5">
+                    <button
+                      onClick={() => {
+                        applyFormatToCurrentLine("scene-header-top-line");
+                        setShowFormatMenu(false);
+                      }}
+                      className="w-full text-right px-3 py-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 text-sm text-white/90 hover:text-white"
+                    >
+                      عنوان المشهد العلوي
+                    </button>
+                    <button
+                      onClick={() => {
+                        applyFormatToCurrentLine("scene-header-3");
+                        setShowFormatMenu(false);
+                      }}
+                      className="w-full text-right px-3 py-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 text-sm text-white/90 hover:text-white"
+                    >
+                      عنوان المشهد
+                    </button>
+                    <button
+                      onClick={() => {
+                        applyFormatToCurrentLine("action");
+                        setShowFormatMenu(false);
+                      }}
+                      className="w-full text-right px-3 py-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 text-sm text-white/90 hover:text-white"
+                    >
+                      وصف الأفعال
+                    </button>
+                    <button
+                      onClick={() => {
+                        applyFormatToCurrentLine("character");
+                        setShowFormatMenu(false);
+                      }}
+                      className="w-full text-right px-3 py-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 text-sm text-white/90 hover:text-white"
+                    >
+                      الشخصية
+                    </button>
+                    <button
+                      onClick={() => {
+                        applyFormatToCurrentLine("dialogue");
+                        setShowFormatMenu(false);
+                      }}
+                      className="w-full text-right px-3 py-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 text-sm text-white/90 hover:text-white"
+                    >
+                      الحوار
+                    </button>
+                    <button
+                      onClick={() => {
+                        applyFormatToCurrentLine("transition");
+                        setShowFormatMenu(false);
+                      }}
+                      className="w-full text-right px-3 py-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 text-sm text-white/90 hover:text-white"
+                    >
+                      الانتقال
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
 
+            {/* Tools Menu */}
             <div className="relative">
               <button
                 onClick={() => setShowToolsMenu(!showToolsMenu)}
-                className="px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
+                className="px-4 py-2.5 rounded-xl hover:bg-white/10 transition-all duration-300 flex items-center gap-2 text-sm font-medium"
               >
-                أدوات <ChevronDown size={16} className="mr-1" />
+                أدوات
+                <ChevronDown size={14} className={`transition-transform duration-200 ${showToolsMenu ? 'rotate-180' : ''}`} />
               </button>
 
               {showToolsMenu && (
-                <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-20">
-                  <button
-                    onClick={() => setShowSearchDialog(true)}
-                    className="block w-full text-right px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
-                  >
-                    <Search size={16} className="ml-2" /> بحث
-                  </button>
-                  <button
-                    onClick={() => setShowReplaceDialog(true)}
-                    className="block w-full text-right px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
-                  >
-                    <Replace size={16} className="ml-2" /> استبدال
-                  </button>
-                  <button
-                    onClick={() => setShowCharacterRename(true)}
-                    className="block w-full text-right px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
-                  >
-                    <UserSquare size={16} className="ml-2" /> إعادة تسمية
-                    الشخصية
-                  </button>
-                  <button
-                    onClick={() => setShowReviewerDialog(true)}
-                    className="block w-full text-right px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
-                  >
-                    <Sparkles size={16} className="ml-2" /> مراجعة الذكاء
-                    الاصطناعي
-                  </button>
-                  <button
-                    onClick={() => setShowAdvancedAgents(true)}
-                    className="block w-full text-right px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
-                  >
-                    <Brain size={16} className="ml-2" /> الوكلاء المتقدمة
-                  </button>
+                <div className="absolute right-0 mt-2 w-56 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-20">
+                  <div className="p-1.5 space-y-0.5">
+                    <button
+                      onClick={() => {
+                        setShowSearchDialog(true);
+                        setShowToolsMenu(false);
+                      }}
+                      className="w-full text-right px-3 py-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 flex items-center gap-3 text-sm group"
+                    >
+                      <div className="p-1.5 rounded-lg bg-blue-500/20 group-hover:bg-blue-500/30 transition-colors">
+                        <Search size={14} className="text-blue-400" />
+                      </div>
+                      <span className="text-white/90 group-hover:text-white transition-colors">بحث</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowReplaceDialog(true);
+                        setShowToolsMenu(false);
+                      }}
+                      className="w-full text-right px-3 py-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 flex items-center gap-3 text-sm group"
+                    >
+                      <div className="p-1.5 rounded-lg bg-violet-500/20 group-hover:bg-violet-500/30 transition-colors">
+                        <Replace size={14} className="text-violet-400" />
+                      </div>
+                      <span className="text-white/90 group-hover:text-white transition-colors">استبدال</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowCharacterRename(true);
+                        setShowToolsMenu(false);
+                      }}
+                      className="w-full text-right px-3 py-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 flex items-center gap-3 text-sm group"
+                    >
+                      <div className="p-1.5 rounded-lg bg-emerald-500/20 group-hover:bg-emerald-500/30 transition-colors">
+                        <UserSquare size={14} className="text-emerald-400" />
+                      </div>
+                      <span className="text-white/90 group-hover:text-white transition-colors">إعادة تسمية</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowReviewerDialog(true);
+                        setShowToolsMenu(false);
+                      }}
+                      className="w-full text-right px-3 py-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 flex items-center gap-3 text-sm group"
+                    >
+                      <div className="p-1.5 rounded-lg bg-amber-500/20 group-hover:bg-amber-500/30 transition-colors">
+                        <Sparkles size={14} className="text-amber-400" />
+                      </div>
+                      <span className="text-white/90 group-hover:text-white transition-colors">مراجعة AI</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowAdvancedAgents(true);
+                        setShowToolsMenu(false);
+                      }}
+                      className="w-full text-right px-3 py-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 flex items-center gap-3 text-sm group"
+                    >
+                      <div className="p-1.5 rounded-lg bg-rose-500/20 group-hover:bg-rose-500/30 transition-colors">
+                        <Brain size={14} className="text-rose-400" />
+                      </div>
+                      <span className="text-white/90 group-hover:text-white transition-colors">الوكلاء المتقدمة</span>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
 
+            {/* Print Button */}
             <button
               onClick={() => window.print()}
-              className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+              className="group p-2.5 rounded-xl hover:bg-white/10 transition-all duration-300"
               title="طباعة"
             >
-              <Printer size={20} />
+              <div className="absolute inset-0 bg-gradient-to-r from-slate-500/0 to-slate-500/0 group-hover:from-slate-500/20 group-hover:to-slate-500/10 rounded-xl transition-all duration-300"></div>
+              <Printer size={18} className="relative" />
             </button>
           </div>
         </div>
       </header>
 
       <div className="flex">
-        <div className="flex-1 bg-gray-900 p-6 overflow-auto">
-          <div
-            ref={editorRef}
-            contentEditable
-            className="screenplay-page focus:outline-none"
-            style={{
-              boxSizing: "border-box",
-              fontFamily: "AzarMehrMonospaced-San",
-              fontSize: selectedSize,
-              direction: "rtl",
-              lineHeight: "14pt",
-              width: "210mm",
-              minHeight: "297mm",
-              margin: "0 auto",
-              paddingTop: "1in",
-              paddingBottom: "0.5in",
-              paddingRight: "1.5in",
-              paddingLeft: "1in",
-              backgroundColor: "white",
-              color: "black",
-              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.45)",
-              border: "1px solid rgba(255, 255, 255, 0.08)",
-            }}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            onInput={updateContent}
-          />
+        {/* Main Editor Area with Subtle Background Effects */}
+        <div className="flex-1 relative bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 overflow-auto">
+          {/* Subtle ambient background glow */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="absolute top-0 right-1/4 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl"></div>
+            <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-violet-500/5 rounded-full blur-3xl"></div>
+          </div>
+
+          {/* Content */}
+          <div className="relative px-6 pb-6 pt-0">
+            <div className="w-full flex justify-center">
+              <div
+                style={{ width: "210mm" }}
+                className="h-[52px] flex items-center justify-center"
+              >
+                <MainHeader onSave={() => {}} onUndo={() => {}} />
+              </div>
+            </div>
+            <div
+              ref={editorRef}
+              contentEditable
+              className="screenplay-page focus:outline-none relative z-10"
+              style={{
+                boxSizing: "border-box",
+                fontFamily: selectedFont,
+                fontSize: selectedSize,
+                direction: "rtl",
+                lineHeight: "14pt",
+                width: "210mm",
+                minHeight: "297mm",
+                margin: "0 auto",
+                paddingTop: "1in",
+                paddingBottom: "0.5in",
+                paddingRight: "1.5in",
+                paddingLeft: "1in",
+                backgroundColor: "white",
+                color: "black",
+                borderRadius: "16px",
+                boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+              }}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              onInput={updateContent}
+            />
+          </div>
         </div>
 
-        <div className="no-print sidebar w-64 border-l border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-800">
-          <div className="space-y-6">
-            <div>
-              <h3 className="font-bold mb-2">الإحصائيات</h3>
-              <div className="space-y-1 text-sm">
-                <div>الشخصيات: {documentStats.characters}</div>
-                <div>الكلمات: {documentStats.words}</div>
-                <div>الصفحات: {documentStats.pages}</div>
-                <div>المشاهد: {documentStats.scenes}</div>
-              </div>
-            </div>
+        {/* Sidebar - Elegant Glass Design */}
+        <div className="no-print sidebar w-64 border-l border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/60 backdrop-blur-xl">
+          <div className="p-4">
+            <div className="grid grid-cols-4 gap-2">
+              <button className="group relative p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-300 flex items-center justify-center">
+                <div className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/10 rounded-xl transition-all duration-300"></div>
+                <Film className="w-5 h-5 text-blue-400 group-hover:text-blue-300 transition-colors relative" />
+              </button>
+              <button className="group relative p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-300 flex items-center justify-center">
+                <div className="absolute inset-0 bg-violet-500/0 group-hover:bg-violet-500/10 rounded-xl transition-all duration-300"></div>
+                <Camera className="w-5 h-5 text-violet-400 group-hover:text-violet-300 transition-colors relative" />
+              </button>
+              <button className="group relative p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-300 flex items-center justify-center">
+                <div className="absolute inset-0 bg-emerald-500/0 group-hover:bg-emerald-500/10 rounded-xl transition-all duration-300"></div>
+                <Play className="w-5 h-5 text-emerald-400 group-hover:text-emerald-300 transition-colors relative" />
+              </button>
+              <button className="group relative p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-300 flex items-center justify-center">
+                <div className="absolute inset-0 bg-amber-500/0 group-hover:bg-amber-500/10 rounded-xl transition-all duration-300"></div>
+                <Pause className="w-5 h-5 text-amber-400 group-hover:text-amber-300 transition-colors relative" />
+              </button>
 
-            <div>
-              <h3 className="font-bold mb-2">التنسيق</h3>
-              <div className="space-y-2">
-                <div>
-                  <label className="block text-sm mb-1">الخط</label>
-                  <select
-                    value={selectedFont}
-                    onChange={(e) => setSelectedFont(e.target.value)}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
-                  >
-                    <option value="Amiri">Amiri</option>
-                    <option value="Cairo">Cairo</option>
-                    <option value="Tajawal">Tajawal</option>
-                    <option value="Noto Sans Arabic">Noto Sans Arabic</option>
-                  </select>
-                </div>
+              <button className="group relative p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-300 flex items-center justify-center">
+                <div className="absolute inset-0 bg-rose-500/0 group-hover:bg-rose-500/10 rounded-xl transition-all duration-300"></div>
+                <FastForward className="w-5 h-5 text-rose-400 group-hover:text-rose-300 transition-colors relative" />
+              </button>
+              <button className="group relative p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-300 flex items-center justify-center">
+                <div className="absolute inset-0 bg-cyan-500/0 group-hover:bg-cyan-500/10 rounded-xl transition-all duration-300"></div>
+                <Scissors className="w-5 h-5 text-cyan-400 group-hover:text-cyan-300 transition-colors relative" />
+              </button>
+              <button className="group relative p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-300 flex items-center justify-center">
+                <div className="absolute inset-0 bg-indigo-500/0 group-hover:bg-indigo-500/10 rounded-xl transition-all duration-300"></div>
+                <Upload className="w-5 h-5 text-indigo-400 group-hover:text-indigo-300 transition-colors relative" />
+              </button>
+              <button className="group relative p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-300 flex items-center justify-center">
+                <div className="absolute inset-0 bg-pink-500/0 group-hover:bg-pink-500/10 rounded-xl transition-all duration-300"></div>
+                <Download className="w-5 h-5 text-pink-400 group-hover:text-pink-300 transition-colors relative" />
+              </button>
 
-                <div>
-                  <label className="block text-sm mb-1">الحجم</label>
-                  <select
-                    value={selectedSize}
-                    onChange={(e) => setSelectedSize(e.target.value)}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
-                  >
-                    <option value="12pt">صغير (12pt)</option>
-                    <option value="14pt">متوسط (14pt)</option>
-                    <option value="16pt">كبير (16pt)</option>
-                    <option value="18pt">كبير جداً (18pt)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="font-bold mb-2">العناصر السريعة</h3>
-              <div className="space-y-2">
-                <button
-                  onClick={() => applyFormatToCurrentLine("scene-header-3")}
-                  className="w-full text-right p-2 bg-blue-100 dark:bg-blue-900 hover:bg-blue-200 dark:hover:bg-blue-800 rounded flex items-center"
-                >
-                  <Hash size={16} className="ml-2" /> إضافة مشهد
-                </button>
-                <button
-                  onClick={() => applyFormatToCurrentLine("character")}
-                  className="w-full text-right p-2 bg-green-100 dark:bg-green-900 hover:bg-green-200 dark:hover:bg-green-800 rounded flex items-center"
-                >
-                  <UserSquare size={16} className="ml-2" /> إضافة شخصية
-                </button>
-                <button
-                  onClick={() => applyFormatToCurrentLine("dialogue")}
-                  className="w-full text-right p-2 bg-purple-100 dark:bg-purple-900 hover:bg-purple-200 dark:hover:bg-purple-800 rounded flex items-center"
-                >
-                  <MessageCircle size={16} className="ml-2" /> إضافة حوار
-                </button>
-                <button
-                  onClick={() => applyFormatToCurrentLine("transition")}
-                  className="w-full text-right p-2 bg-yellow-100 dark:bg-yellow-900 hover:bg-yellow-200 dark:hover:bg-yellow-800 rounded flex items-center"
-                >
-                  <FastForward size={16} className="ml-2" /> إضافة انتقال
-                </button>
-              </div>
+              <button className="group relative p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-300 flex items-center justify-center">
+                <div className="absolute inset-0 bg-slate-500/0 group-hover:bg-slate-500/10 rounded-xl transition-all duration-300"></div>
+                <Printer className="w-5 h-5 text-slate-400 group-hover:text-slate-300 transition-colors relative" />
+              </button>
+              <button className="group relative p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-300 flex items-center justify-center">
+                <div className="absolute inset-0 bg-teal-500/0 group-hover:bg-teal-500/10 rounded-xl transition-all duration-300"></div>
+                <FileText className="w-5 h-5 text-teal-400 group-hover:text-teal-300 transition-colors relative" />
+              </button>
+              <button className="group relative p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-300 flex items-center justify-center col-span-1">
+                <div className="absolute inset-0 bg-orange-500/0 group-hover:bg-orange-500/10 rounded-xl transition-all duration-300"></div>
+                <PenTool className="w-5 h-5 text-orange-400 group-hover:text-orange-300 transition-colors relative" />
+              </button>
             </div>
           </div>
         </div>
       </div>
 
+      {/* Search Dialog - Elegant Design */}
       {showSearchDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-96">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold flex items-center">
-                <Search className="ml-2" /> بحث
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
+          <div className="bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-3xl p-6 w-[400px] shadow-2xl shadow-black/50">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-bold flex items-center gap-2 text-white">
+                <div className="p-2 rounded-xl bg-blue-500/20">
+                  <Search className="text-blue-400 w-5 h-5" />
+                </div>
+                بحث
               </h3>
-              <button onClick={() => setShowSearchDialog(false)}>
-                <X size={20} />
+              <button
+                onClick={() => setShowSearchDialog(false)}
+                className="p-2 rounded-xl hover:bg-white/10 transition-all duration-200 text-white/60 hover:text-white"
+              >
+                <X size={18} />
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div>
-                <label className="block mb-1">كلمة البحث</label>
+                <label className="block text-sm font-medium text-white/70 mb-2">كلمة البحث</label>
                 <input
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-blue-500/50 focus:bg-white/10 transition-all duration-200"
                   placeholder="أدخل النص للبحث عنه"
+                  autoFocus
                 />
               </div>
 
-              <div className="flex justify-end space-x-2">
+              <div className="flex justify-end gap-2 pt-2">
                 <button
                   onClick={() => setShowSearchDialog(false)}
-                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="px-5 py-2.5 rounded-xl border border-white/10 text-white/70 hover:text-white hover:bg-white/10 transition-all duration-200 font-medium text-sm"
                 >
                   إلغاء
                 </button>
                 <button
                   onClick={handleSearch}
-                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 transition-all duration-200 font-medium text-sm shadow-lg shadow-blue-500/25"
                 >
                   بحث
                 </button>
@@ -789,51 +895,59 @@ export default function ScreenplayEditorEnhanced() {
         </div>
       )}
 
+      {/* Replace Dialog - Elegant Design */}
       {showReplaceDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-96">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold flex items-center">
-                <Replace className="ml-2" /> بحث واستبدال
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
+          <div className="bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-3xl p-6 w-[400px] shadow-2xl shadow-black/50">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-bold flex items-center gap-2 text-white">
+                <div className="p-2 rounded-xl bg-violet-500/20">
+                  <Replace className="text-violet-400 w-5 h-5" />
+                </div>
+                بحث واستبدال
               </h3>
-              <button onClick={() => setShowReplaceDialog(false)}>
-                <X size={20} />
+              <button
+                onClick={() => setShowReplaceDialog(false)}
+                className="p-2 rounded-xl hover:bg-white/10 transition-all duration-200 text-white/60 hover:text-white"
+              >
+                <X size={18} />
               </button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block mb-1">البحث عن</label>
+                <label className="block text-sm font-medium text-white/70 mb-2">البحث عن</label>
                 <input
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-violet-500/50 focus:bg-white/10 transition-all duration-200"
                   placeholder="أدخل النص للبحث عنه"
+                  autoFocus
                 />
               </div>
 
               <div>
-                <label className="block mb-1">استبدال بـ</label>
+                <label className="block text-sm font-medium text-white/70 mb-2">استبدال بـ</label>
                 <input
                   type="text"
                   value={replaceTerm}
                   onChange={(e) => setReplaceTerm(e.target.value)}
-                  className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-violet-500/50 focus:bg-white/10 transition-all duration-200"
                   placeholder="أدخل النص البديل"
                 />
               </div>
 
-              <div className="flex justify-end space-x-2">
+              <div className="flex justify-end gap-2 pt-2">
                 <button
                   onClick={() => setShowReplaceDialog(false)}
-                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="px-5 py-2.5 rounded-xl border border-white/10 text-white/70 hover:text-white hover:bg-white/10 transition-all duration-200 font-medium text-sm"
                 >
                   إلغاء
                 </button>
                 <button
                   onClick={handleReplace}
-                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-violet-500 text-white hover:from-violet-500 hover:to-violet-400 transition-all duration-200 font-medium text-sm shadow-lg shadow-violet-500/25"
                 >
                   استبدال
                 </button>
@@ -843,51 +957,59 @@ export default function ScreenplayEditorEnhanced() {
         </div>
       )}
 
+      {/* Character Rename Dialog - Elegant Design */}
       {showCharacterRename && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-96">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold flex items-center">
-                <UserSquare className="ml-2" /> إعادة تسمية الشخصية
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
+          <div className="bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-3xl p-6 w-[400px] shadow-2xl shadow-black/50">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-bold flex items-center gap-2 text-white">
+                <div className="p-2 rounded-xl bg-emerald-500/20">
+                  <UserSquare className="text-emerald-400 w-5 h-5" />
+                </div>
+                إعادة تسمية الشخصية
               </h3>
-              <button onClick={() => setShowCharacterRename(false)}>
-                <X size={20} />
+              <button
+                onClick={() => setShowCharacterRename(false)}
+                className="p-2 rounded-xl hover:bg-white/10 transition-all duration-200 text-white/60 hover:text-white"
+              >
+                <X size={18} />
               </button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block mb-1">الاسم الحالي</label>
+                <label className="block text-sm font-medium text-white/70 mb-2">الاسم الحالي</label>
                 <input
                   type="text"
                   value={oldCharacterName}
                   onChange={(e) => setOldCharacterName(e.target.value)}
-                  className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50 focus:bg-white/10 transition-all duration-200"
                   placeholder="أدخل الاسم الحالي"
+                  autoFocus
                 />
               </div>
 
               <div>
-                <label className="block mb-1">الاسم الجديد</label>
+                <label className="block text-sm font-medium text-white/70 mb-2">الاسم الجديد</label>
                 <input
                   type="text"
                   value={newCharacterName}
                   onChange={(e) => setNewCharacterName(e.target.value)}
-                  className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50 focus:bg-white/10 transition-all duration-200"
                   placeholder="أدخل الاسم الجديد"
                 />
               </div>
 
-              <div className="flex justify-end space-x-2">
+              <div className="flex justify-end gap-2 pt-2">
                 <button
                   onClick={() => setShowCharacterRename(false)}
-                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="px-5 py-2.5 rounded-xl border border-white/10 text-white/70 hover:text-white hover:bg-white/10 transition-all duration-200 font-medium text-sm"
                 >
                   إلغاء
                 </button>
                 <button
                   onClick={handleCharacterRename}
-                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 text-white hover:from-emerald-500 hover:to-emerald-400 transition-all duration-200 font-medium text-sm shadow-lg shadow-emerald-500/25"
                 >
                   إعادة تسمية
                 </button>
@@ -897,50 +1019,60 @@ export default function ScreenplayEditorEnhanced() {
         </div>
       )}
 
+      {/* AI Review Dialog - Elegant Design */}
       {showReviewerDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-1/2 max-h-[80vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold flex items-center">
-                <Sparkles className="ml-2" /> مراجعة الذكاء الاصطناعي
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
+          <div className="bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-3xl p-6 w-[500px] max-h-[80vh] overflow-y-auto shadow-2xl shadow-black/50">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-bold flex items-center gap-2 text-white">
+                <div className="p-2 rounded-xl bg-amber-500/20">
+                  <Sparkles className="text-amber-400 w-5 h-5" />
+                </div>
+                مراجعة الذكاء الاصطناعي
               </h3>
-              <button onClick={() => setShowReviewerDialog(false)}>
-                <X size={20} />
+              <button
+                onClick={() => setShowReviewerDialog(false)}
+                className="p-2 rounded-xl hover:bg-white/10 transition-all duration-200 text-white/60 hover:text-white"
+              >
+                <X size={18} />
               </button>
             </div>
 
             {isReviewing ? (
-              <div className="flex flex-col items-center justify-center py-8">
-                <Loader2 className="animate-spin mb-4" size={32} />
-                <p>جاري تحليل النص باستخدام الذكاء الاصطناعي...</p>
+              <div className="flex flex-col items-center justify-center py-12">
+                <div className="relative mb-6">
+                  <div className="absolute inset-0 bg-amber-500/20 blur-2xl rounded-full"></div>
+                  <Loader2 className="relative animate-spin text-amber-400 w-12 h-12" />
+                </div>
+                <p className="text-white/70">جاري تحليل النص باستخدام الذكاء الاصطناعي...</p>
               </div>
             ) : reviewResult ? (
               <div className="space-y-4">
-                <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded whitespace-pre-line">
+                <div className="bg-white/5 border border-white/10 p-4 rounded-2xl whitespace-pre-line text-white/90 leading-relaxed">
                   {reviewResult}
                 </div>
-                <div className="flex justify-end">
+                <div className="flex justify-end pt-2">
                   <button
                     onClick={() => setShowReviewerDialog(false)}
-                    className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 text-white hover:from-amber-500 hover:to-amber-400 transition-all duration-200 font-medium text-sm shadow-lg shadow-amber-500/25"
                   >
                     إغلاق
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="space-y-4">
-                <p>هل تريد مراجعة النص باستخدام الذكاء الاصطناعي؟</p>
-                <div className="flex justify-end space-x-2">
+              <div className="space-y-6">
+                <p className="text-white/70 text-center py-4">هل تريد مراجعة النص باستخدام الذكاء الاصطناعي؟</p>
+                <div className="flex justify-end gap-2">
                   <button
                     onClick={() => setShowReviewerDialog(false)}
-                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="px-5 py-2.5 rounded-xl border border-white/10 text-white/70 hover:text-white hover:bg-white/10 transition-all duration-200 font-medium text-sm"
                   >
                     إلغاء
                   </button>
                   <button
                     onClick={handleAIReview}
-                    className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 text-white hover:from-amber-500 hover:to-amber-400 transition-all duration-200 font-medium text-sm shadow-lg shadow-amber-500/25"
                   >
                     مراجعة
                   </button>

@@ -9,10 +9,11 @@ import React from "react";
  */
 export const getFormatStyles = (
   formatType: string,
-  selectedSize: string = "12pt"
+  selectedSize: string = "12pt",
+  selectedFont: string = "AzarMehrMonospaced-San"
 ): React.CSSProperties => {
   const baseStyles: React.CSSProperties = {
-    fontFamily: "AzarMehrMonospaced-San",
+    fontFamily: selectedFont,
     fontSize: selectedSize,
     direction: "rtl",
     lineHeight: "14pt",

@@ -313,4 +313,8 @@ export interface ClassificationResult {
     scores: { [type: string]: ClassificationScore };
     /** سياق السطر المستخدم للتصنيف */
     context: LineContext;
+    /** درجة الشك (0-100) - كلما زادت زادت الحاجة للمراجعة */
+    doubtScore?: number;
+    /** أسباب التصنيف */
+    reasoning?: string[];
 }

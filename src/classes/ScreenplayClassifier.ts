@@ -113,6 +113,8 @@ export class ScreenplayClassifier {
       ScreenplayClassifier.normalizeSeparators(input)
     )
       .replace(/[\u200f\u200e\ufeff\t]+/g, "")
+      // إزالة الرموز الزائدة من البداية فقط
+      .replace(/^[\s\u200E\u200F\u061C\ufeFF]*[•·∙⋅●○◦■□▪▫◆◇–—−‒―‣⁃*+\-]+/, "")
       .trim();
   }
 
@@ -313,9 +315,13 @@ export class ScreenplayClassifier {
       .filter(Boolean)
       .join(" - ");
 
+    // تنظيف رقم المشهد والوقت/المكان من الرموز الزائدة
+    const sceneNum = parsed.sceneNum;
+    const cleanedTimeLocation = ScreenplayClassifier.normalizeLine(timeLocation);
+
     return {
-      sceneNum: parsed.sceneNum,
-      timeLocation,
+      sceneNum: ScreenplayClassifier.normalizeLine(sceneNum),
+      timeLocation: cleanedTimeLocation,
       place,
       consumedLines,
     };
@@ -520,6 +526,9 @@ export class ScreenplayClassifier {
         continue;
       }
 
+      // تنظيف السطر من الرموز الزائدة قبل التصنيف
+      const cleanedCurrent = ScreenplayClassifier.normalizeLine(current);
+
       // 1. استخراج رأس المشهد (المنطق الموجود - بدون تغيير)
       const sceneHeaderParts = ScreenplayClassifier.extractSceneHeaderParts(
         lines,
@@ -590,15 +599,15 @@ export class ScreenplayClassifier {
       // 4. التصنيف باستخدام النظام الجديد أو القديم
       if (useContext) {
         // استخدام نظام النقاط السياقي الجديد مع تمرير previousTypes
-        const result = ScreenplayClassifier.classifyWithContext(current, i, lines, previousTypes);
-        results.push({ text: current, type: result.type });
+        const result = ScreenplayClassifier.classifyWithScoring(cleanedCurrent, i, lines, previousTypes);
+        results.push({ text: cleanedCurrent, type: result.type });
         previousTypes.push(result.type);
       } else {
         // استخدام classifyHybrid القديم (للتوافق)
         const prevType = results.length > 0 ? results[results.length - 1].type : null;
         const nextLine = i < lines.length - 1 ? (lines[i + 1] || "").trim() : null;
-        const type = this.classifyHybrid(current, prevType, nextLine);
-        results.push({ text: current, type });
+        const type = this.classifyHybrid(cleanedCurrent, prevType, nextLine);
+        results.push({ text: cleanedCurrent, type });
         previousTypes.push(type);
       }
     }
@@ -649,7 +658,9 @@ export class ScreenplayClassifier {
       const wordCount = current.split(' ').length;
       const hasColon = current.includes(":") || current.includes("：");
       console.log(`  ✅ Scene-Header-3 Check: WordCount=${wordCount}, HasColon=${hasColon}`);
-      if (wordCount <= 6 && !hasColon) {
+      // تحقق أقوى: لا يبدأ بفعل حركي ولا يحتوي على علامات ترقيم
+      const normalized = this.normalizeLine(current);
+      if (wordCount <= 6 && !hasColon && !this.isActionVerbStart(normalized) && !this.hasSentencePunctuation(normalized)) {
         console.log(`  ✅ CLASSIFIED AS: scene-header-3`);
         return 'scene-header-3';
       }
@@ -657,8 +668,12 @@ export class ScreenplayClassifier {
 
     // Character (شخصية)
     const looksLikeDialogueNext = nextLine && !this.isSceneHeaderStart(nextLine) && !this.isTransition(nextLine);
-    if (looksLikeDialogueNext && current.length < 40 && !current.endsWith('.')) {
-      return 'character';
+    const normalized = this.normalizeLine(current);
+    if (looksLikeDialogueNext && current.length < 40 && !current.endsWith('.') && !this.isActionVerbStart(normalized)) {
+      // تحقق إضافي: لا يحتوي على علامات ترقيم كثيرة
+      if (!this.hasSentencePunctuation(normalized) || (normalized.includes(':') || normalized.includes('：'))) {
+        return 'character';
+      }
     }
 
     // Dialogue (حوار)
@@ -1216,13 +1231,57 @@ export class ScreenplayClassifier {
   }
 
   /**
-   * التصنيف بالسياق الذكي - باستخدام نظام النقاط
+   * حساب درجة الشك للسطر - كلما زادت الدرجة، زادت الحاجة للمراجعة
+   * @param scores جميع نقاط التصنيف
+   * @returns درجة الشك من 0 إلى 100
+   */
+  private static calculateDoubtScore(scores: { [type: string]: ClassificationScore }): number {
+    // ترتيب النقاط من الأعلى للأقل
+    const sortedScores = Object.entries(scores).sort((a, b) => b[1].score - a[1].score);
+    const highest = sortedScores[0];
+    const secondHighest = sortedScores[1];
+    
+    // إذا كان الفرق بين الأول والثاني صغيراً، هناك شك
+    const scoreDiff = highest ? (secondHighest ? highest[1].score - secondHighest[1].score : highest[1].score) : 0;
+    
+    // حساب درجة الشك
+    let doubtScore = 0;
+    
+    // 1. الفرق بين النقاط أقل من 20 نقطة = شك عالي
+    if (scoreDiff < 20) {
+      doubtScore += 40;
+    } else if (scoreDiff < 30) {
+      doubtScore += 20;
+    }
+    
+    // 2. إذا كانت جميع النقاط منخفضة (أقل من 40)
+    if (highest && highest[1].score < 40) {
+      doubtScore += 30;
+    }
+    
+    // 3. إذا كان هناك أكثر من نوع بنفس النقاط العليا
+    const maxScore = highest ? highest[1].score : 0;
+    const ties = sortedScores.filter(s => s[1].score === maxScore).length;
+    if (ties > 1) {
+      doubtScore += 30;
+    }
+    
+    // 4. إذا كانت الثقة منخفضة للنوع الأعلى
+    if (highest && highest[1].confidence === 'low') {
+      doubtScore += 20;
+    }
+    
+    return Math.min(100, doubtScore);
+  }
+
+  /**
+   * التصنيف بالسياق الذكي - باستخدام نظام النقاط مع درجة الشك
    * دالة عامة يمكن استدعاؤها من خارج الفئة
    * @param line السطر الحالي
    * @param index موقع السطر في النص
    * @param allLines جميع السطور
    * @param previousTypes أنواع السطور السابقة (اختياري)
-   * @returns نتيجة التصنيف مع النقاط والسياق
+   * @returns نتيجة التصنيف مع النقاط والسياق ودرجة الشك
    */
   public static classifyWithContext(
     line: string,
@@ -1370,6 +1429,27 @@ export class ScreenplayClassifier {
     const parentheticalScore = this.scoreAsParenthetical(line, ctx);
     const sceneHeaderScore = this.scoreAsSceneHeader(line, ctx);
 
+    // تحسين إضافي: إذا كان السطر يبدأ بفعل حركي، اجعل نقطة الأكشن أعلى
+    const normalizedLine = this.normalizeLine(line);
+    if (this.isActionVerbStart(normalizedLine)) {
+      actionScore.score += 30;
+      actionScore.confidence = 'high';
+      actionScore.reasons.push('يبدأ بفعل حركي قوي');
+    }
+
+    // تحسين إضافي: إذا كان السطر طويلاً ويحتوي على علامات ترقيم، رجح الأكشن
+    if (line.length > 50 && this.hasSentencePunctuation(normalizedLine)) {
+      actionScore.score += 20;
+      actionScore.reasons.push('سطر طويل مع علامات ترقيم (غالباً أكشن)');
+    }
+
+    // تحسين إضافي: إذا كان السطر يحتوي على شرطة في البداية، فهو أكشن
+    if (/^[\s]*[-\–—]/.test(line)) {
+      actionScore.score += 40;
+      actionScore.confidence = 'high';
+      actionScore.reasons.push('يبدأ بشرطة (علامة الأكشن)');
+    }
+
     // جمع النقاط في كائن واحد
     const scores: { [type: string]: ClassificationScore } = {
       character: characterScore,
@@ -1390,11 +1470,15 @@ export class ScreenplayClassifier {
       }
     }
 
+    // حساب درجة الشك
+    const doubtScore = this.calculateDoubtScore(scores);
+
     return {
       type: bestType,
       confidence: scores[bestType].confidence,
       scores,
-      context: ctx
+      context: ctx,
+      doubtScore, // إضافة درجة الشك
     };
   }
 }

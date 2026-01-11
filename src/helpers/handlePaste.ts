@@ -43,30 +43,55 @@ export const handlePaste = (
 
       // التعامل مع رؤوس المشاهد المعقدة (scene-header-top-line)
       if (type === "scene-header-top-line") {
-        // تقسيم النص إلى أجزاء (رقم المشهد والوقت/المكان)
-        const parts = text.split(/\s+/).filter(Boolean);
-        const sceneNum = parts[0] || "";
-        const timeLocation = parts.slice(1).join(" ");
+        // استخدام extractSceneHeaderParts للحصول على بيانات منظمة
+        const sceneHeaderParts = ScreenplayClassifier.parseSceneHeaderFromLine(text);
+        
+        if (sceneHeaderParts) {
+          const container = document.createElement("div");
+          container.className = "scene-header-top-line";
+          Object.assign(container.style, styles);
 
-        const container = document.createElement("div");
-        container.className = "scene-header-top-line";
-        Object.assign(container.style, styles);
+          const part1 = document.createElement("span");
+          part1.className = "scene-header-1";
+          part1.textContent = sceneHeaderParts.sceneNum;
+          Object.assign(part1.style, getFormatStylesFn("scene-header-1"));
+          container.appendChild(part1);
 
-        const part1 = document.createElement("span");
-        part1.className = "scene-header-1";
-        part1.textContent = sceneNum;
-        Object.assign(part1.style, getFormatStylesFn("scene-header-1"));
-        container.appendChild(part1);
+          if (sceneHeaderParts.timeLocation) {
+            const part2 = document.createElement("span");
+            part2.className = "scene-header-2";
+            part2.textContent = sceneHeaderParts.timeLocation;
+            Object.assign(part2.style, getFormatStylesFn("scene-header-2"));
+            container.appendChild(part2);
+          }
 
-        if (timeLocation) {
-          const part2 = document.createElement("span");
-          part2.className = "scene-header-2";
-          part2.textContent = timeLocation;
-          Object.assign(part2.style, getFormatStylesFn("scene-header-2"));
-          container.appendChild(part2);
+          htmlResult += container.outerHTML;
+        } else {
+          // كنسخة احتياطية، استخدم الطريقة القديمة
+          const parts = text.split(/\s+/).filter(Boolean);
+          const sceneNum = parts[0] || "";
+          const timeLocation = parts.slice(1).join(" ");
+
+          const container = document.createElement("div");
+          container.className = "scene-header-top-line";
+          Object.assign(container.style, styles);
+
+          const part1 = document.createElement("span");
+          part1.className = "scene-header-1";
+          part1.textContent = sceneNum;
+          Object.assign(part1.style, getFormatStylesFn("scene-header-1"));
+          container.appendChild(part1);
+
+          if (timeLocation) {
+            const part2 = document.createElement("span");
+            part2.className = "scene-header-2";
+            part2.textContent = timeLocation;
+            Object.assign(part2.style, getFormatStylesFn("scene-header-2"));
+            container.appendChild(part2);
+          }
+
+          htmlResult += container.outerHTML;
         }
-
-        htmlResult += container.outerHTML;
       } else {
         // لجميع الأنواع الأخرى، أنشئ div بسيط
         htmlResult += `<div class="${type}" style='${styleString}'>${text}</div>`;
