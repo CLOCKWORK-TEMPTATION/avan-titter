@@ -1,5 +1,5 @@
 import React from "react";
-import { ScreenplayClassifier } from "../classes/ScreenplayClassifier";
+import { ScreenplayClassifier } from "../../classes/ScreenplayClassifier";
 
 /**
  * @function SceneHeaderAgent

@@ -24,21 +24,21 @@ export interface AgentsConfig {
  */
 export const agentsConfig: AgentsConfig = {
   default: {
-    model: 'gemini-2.5-pro',
+    model: 'gemini-3-flash-preview',
     temperature: 0.7,
     maxOutputTokens: 22048,
     topP: 1,
     topK: 1,
   },
   creativeAgent: {
-    model: 'gemini-2.5-pro',
+    model: 'gemini-3-flash-preview',
     temperature: 0.9,
     maxOutputTokens: 40096,
     topP: 1,
     topK: 1,
   },
   analysisAgent: {
-    model: 'gemini-2.5-pro',
+    model: 'gemini-3-flash-preview',
     temperature: 0.5,
     maxOutputTokens: 22048,
     topP: 1,

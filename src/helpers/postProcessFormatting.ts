@@ -20,9 +20,9 @@ export const postProcessFormatting = (
     const currentElement = elements[i] as HTMLElement;
     const nextElement = elements[i + 1] as HTMLElement | undefined;
 
-    if (currentElement.className === "action") {
+    if (currentElement.className === "action" || currentElement.className === "character") {
       const textContent = currentElement.textContent || "";
-const bulletCharacterPattern =/^\s*[•·∙⋅●○◦■□▪▫◆◇–—−‒―‣⁃*+]\s*([^:：]+?)\s*[:：]\s*(.*)\s*$/;
+      const bulletCharacterPattern = ScreenplayClassifier.BULLET_CHARACTER_RE;
       const match = textContent.match(bulletCharacterPattern);
 
       if (match) {
@@ -49,39 +49,73 @@ const bulletCharacterPattern =/^\s*[•·∙⋅●○◦■□▪▫◆◇–—
         }
       }
     }
+  }
 
-    if (currentElement.className === "dialogue") {
-      const textContent = currentElement.textContent || "";
-      const actionPatterns = [
-        /^\s*[-–—]?\s*(?:[ي|ت][\u0600-\u06FF]+|نرى|ننظر|نسمع|نلاحظ|يبدو|يظهر|يبدأ|ينتهي|يستمر|يتوقف|يتحرك|يحدث|يكون|يوجد|توجد|يظهر|تظهر)/,
-        /^\s*[-–—]\s*.+/,
-        /^\s*(?:نرى|ننظر|نسمع|نلاحظ|نشهد|نشاهد|نلمس|نشعر|نصدق|نفهم|نصدق|نشك|نتمنى|نأمل|نخشى|نخاف|نحب|نكره|نحسد|نغبط|ن admire|نحترم)/,
-        /\s+(?:يقول|تقول|قال|قالت|يقوم|تقوم|يبدأ|تبدأ|ينتهي|تنتهي|يذهب|تذهب|يكتب|تكتب|ينظر|تنظر|يبتسم|تبتسم|يقف|تقف|يجلس|تجلس|يدخل|تدخل|يخرج|تخرج|يركض|تركض|يمشي|تمشي|يجري|تجرى|يصرخ|اصرخ|يبكي|تبكي|يضحك|تضحك|يغني|تغني|يرقص|ترقص|يأكل|تأكل|يشرب|تشرب|ينام|تنام|يستيقظ|تستيقظ|يقرأ|تقرأ|يسمع|تسمع|يشم|تشم|يلمس|تلمس|يأخذ|تأخذ|يعطي|تعطي|يفتح|تفتح|يغلق|تغلق|يعود|تعود|يأتي|تأتي|يموت|تموت|يحيا|تحيا|يقاتل|تقاتل|ينصر|تنتصر|يخسر|تخسر|يرسم|ترسم|يصمم|تخطط|يقرر|تقرر|يفكر|تفكر|يتذكر|تذكر|يحاول|تحاول|يستطيع|تستطيع|يريد|تريد|يحتاج|تحتاج|يبحث|تبحث|يجد|تجد|يفقد|تفقد|يحمي|تحمي|يراقب|تراقب|يخفي|تخفي|يكشف|تكشف|يكتشف|تكتشف|يعرف|تعرف|يتعلم|تعلن|يعلم|تعلن)\s+/
-      ];
+  const isBlankActionElement = (el: HTMLElement): boolean => {
+    if (el.className !== "action") return false;
+    return (el.textContent || "").trim() === "";
+  };
 
-      let isActionDescription = false;
-      for (const pattern of actionPatterns) {
-        if (pattern.test(textContent)) {
-          isActionDescription = true;
-          break;
-        }
-      }
+  const createBlankActionElement = (): HTMLDivElement => {
+    const blank = document.createElement("div");
+    blank.className = "action";
+    blank.textContent = "";
+    Object.assign(blank.style, getFormatStylesFn("action"));
+    return blank;
+  };
 
-      if (
-        !isActionDescription &&
-        textContent.length > 20 &&
-        ScreenplayClassifier.wordCount(textContent) > 5
-      ) {
-        isActionDescription = true;
-      }
+  const spacingOutput = document.createElement("div");
+  const children = Array.from(tempDiv.children) as HTMLElement[];
+  let prevNonBlankType: string | null = null;
+  let pendingBlanks: HTMLElement[] = [];
 
-      if (isActionDescription) {
-        currentElement.className = "action";
-        const cleanedText = textContent.replace(/^\s*[-–—]\s*/, "");
-        currentElement.textContent = cleanedText;
-        Object.assign(currentElement.style, getFormatStylesFn("action"));
-      }
+  const flushBlanks = () => {
+    for (const b of pendingBlanks) {
+      spacingOutput.appendChild(b);
     }
+    pendingBlanks = [];
+  };
+
+  for (const child of children) {
+    if (isBlankActionElement(child)) {
+      pendingBlanks.push(child);
+      continue;
+    }
+
+    if (!prevNonBlankType) {
+      flushBlanks();
+      spacingOutput.appendChild(child);
+      prevNonBlankType = child.className;
+      continue;
+    }
+
+    const spacingRule = ScreenplayClassifier.getEnterSpacingRule(
+      prevNonBlankType,
+      child.className
+    );
+
+    if (spacingRule === true) {
+      if (pendingBlanks.length > 0) {
+        spacingOutput.appendChild(pendingBlanks[0]);
+      } else {
+        spacingOutput.appendChild(createBlankActionElement());
+      }
+      pendingBlanks = [];
+    } else if (spacingRule === false) {
+      pendingBlanks = [];
+    } else {
+      flushBlanks();
+    }
+
+    spacingOutput.appendChild(child);
+    prevNonBlankType = child.className;
+  }
+
+  flushBlanks();
+
+  tempDiv.innerHTML = "";
+  while (spacingOutput.firstChild) {
+    tempDiv.appendChild(spacingOutput.firstChild);
   }
 
   return tempDiv.innerHTML;

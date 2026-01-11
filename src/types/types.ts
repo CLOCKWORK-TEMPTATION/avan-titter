@@ -253,3 +253,64 @@ export interface Script {
     /** Flat list of all dialogue lines for quick inspection. */
     dialogueLines: DialogueLine[];
 }
+
+/**
+ * سياق السطر - نافذة قبل/بعد
+ * يستخدم لتوفير سياق للسطر الحالي عند التصنيف أو التحليل
+ */
+export interface LineContext {
+    /** السطور السابقة مع أنواعها */
+    previousLines: {
+        line: string;
+        type: string;
+    }[];
+
+    /** السطور التالية */
+    nextLines: {
+        line: string;
+    }[];
+
+    /** إحصائيات سريعة */
+    stats: {
+        /** طول السطر الحالي */
+        currentLineLength: number;
+        /** عدد الكلمات في السطر الحالي */
+        currentWordCount: number;
+        /** طول السطر التالي */
+        nextLineLength?: number;
+        /** عدد الكلمات في السطر التالي */
+        nextWordCount?: number;
+        /** هل يحتوي السطر الحالي على علامات ترقيم؟ */
+        hasPunctuation: boolean;
+        /** هل يحتوي السطر التالي على علامات ترقيم؟ */
+        nextHasPunctuation?: boolean;
+    };
+}
+
+/**
+ * نتيجة التصنيف بالنقاط
+ * توفر تفاصيل درجة الثقة لكل نوع محتمل
+ */
+export interface ClassificationScore {
+    /** الدرجة من 0 إلى 100 */
+    score: number;
+    /** مستوى الثقة */
+    confidence: 'low' | 'medium' | 'high';
+    /** الأسباب التي دعت إلى هذا التصنيف */
+    reasons: string[];
+}
+
+/**
+ * نتيجة التصنيف الكاملة
+ * توفر معلومات شاملة عن عملية التصنيف
+ */
+export interface ClassificationResult {
+    /** نوع المحتوى المصنف */
+    type: string;
+    /** مستوى الثقة في التصنيف */
+    confidence: 'low' | 'medium' | 'high';
+    /** درجات كل نوع محتمل */
+    scores: { [type: string]: ClassificationScore };
+    /** سياق السطر المستخدم للتصنيف */
+    context: LineContext;
+}

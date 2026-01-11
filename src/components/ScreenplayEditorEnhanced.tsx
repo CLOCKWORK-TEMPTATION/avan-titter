@@ -182,7 +182,7 @@ export default function ScreenplayEditorEnhanced() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [currentFormat, setCurrentFormat] = useState("action");
   const [selectedFont, setSelectedFont] = useState("Cairo");
-  const [selectedSize, setSelectedSize] = useState("14pt");
+  const [selectedSize, setSelectedSize] = useState("12pt");
   const [documentStats, setDocumentStats] = useState({
     characters: 0,
     words: 0,
@@ -399,10 +399,12 @@ export default function ScreenplayEditorEnhanced() {
 
   useEffect(() => {
     if (editorRef.current) {
-      const divs = editorRef.current.querySelectorAll("div");
-      divs.forEach((div: HTMLDivElement) => {
-        const className = div.className;
-        Object.assign(div.style, getFormatStyles(className));
+      const elements = editorRef.current.querySelectorAll<HTMLElement>(
+        "div, span"
+      );
+      elements.forEach((element) => {
+        const className = element.className;
+        Object.assign(element.style, getFormatStyles(className));
       });
       calculateStats();
     }
@@ -427,11 +429,13 @@ export default function ScreenplayEditorEnhanced() {
       `;
 
       // Apply styles to all elements after creation
-      const divs = editorRef.current.querySelectorAll("div");
-      divs.forEach((div: HTMLDivElement) => {
-        const className = div.className;
+      const elements = editorRef.current.querySelectorAll<HTMLElement>(
+        "div, span"
+      );
+      elements.forEach((element) => {
+        const className = element.className;
         if (className) {
-          Object.assign(div.style, getFormatStyles(className));
+          Object.assign(element.style, getFormatStyles(className));
         }
       });
 
@@ -639,16 +643,18 @@ export default function ScreenplayEditorEnhanced() {
           <div
             ref={editorRef}
             contentEditable
-            className="screenplay-page min-h-[29.7cm] focus:outline-none"
+            className="screenplay-page focus:outline-none"
             style={{
-              fontFamily: `${selectedFont}, Amiri, Cairo, Noto Sans Arabic, Arial, sans-serif`,
+              boxSizing: "border-box",
+              fontFamily: "AzarMehrMonospaced-San",
               fontSize: selectedSize,
               direction: "rtl",
-              lineHeight: "1.8",
-              width: "min(21cm, calc(100vw - 2rem))",
+              lineHeight: "14pt",
+              width: "210mm",
+              minHeight: "297mm",
               margin: "0 auto",
               paddingTop: "1in",
-              paddingBottom: "1in",
+              paddingBottom: "0.5in",
               paddingRight: "1.5in",
               paddingLeft: "1in",
               backgroundColor: "white",

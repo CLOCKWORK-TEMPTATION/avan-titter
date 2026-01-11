@@ -9,68 +9,54 @@ import React from "react";
  */
 export const getFormatStyles = (
   formatType: string,
-  selectedSize: string = "14pt"
+  selectedSize: string = "12pt"
 ): React.CSSProperties => {
   const baseStyles: React.CSSProperties = {
-    fontFamily: `"Cairo", system-ui, -apple-system, sans-serif`,
+    fontFamily: "AzarMehrMonospaced-San",
     fontSize: selectedSize,
     direction: "rtl",
-    lineHeight: "1.8",
-    minHeight: "1.2em",
+    lineHeight: "14pt",
+    marginBottom: "2pt",
+    minHeight: "14pt",
   };
 
   const formatStyles: { [key: string]: React.CSSProperties } = {
-    basmala: { textAlign: "left", margin: "0" },
+    basmala: { textAlign: "left", margin: "0 auto" },
     "scene-header-top-line": {
       display: "flex",
       justifyContent: "space-between",
+      alignItems: "baseline",
       width: "100%",
-      margin: "1rem 0 0 0",
     },
     "scene-header-3": {
       textAlign: "center",
-      fontWeight: "bold",
-      margin: "0 0 1rem 0",
     },
-    action: { textAlign: "right", margin: "12px 0" },
+    action: { textAlign: "right", width: "100%", margin: "0" },
     character: {
       textAlign: "center",
-      fontWeight: "bold",
-      textTransform: "uppercase",
-      width: "2.5in",
-      margin: "12px auto 0 auto",
+      margin: "0 auto",
     },
     parenthetical: {
       textAlign: "center",
-      fontStyle: "italic",
-      width: "2.0in",
-      margin: "6px auto",
+      margin: "0 auto",
     },
     dialogue: {
-      textAlign: "center",
       width: "2.5in",
-      lineHeight: "1.2",
-      margin: "0 auto 12px auto",
+      textAlign: "center",
+      margin: "0 auto",
     },
     transition: {
       textAlign: "center",
-      fontWeight: "bold",
-      textTransform: "uppercase",
-      margin: "1rem 0",
+      margin: "0 auto",
+    },
+    "scene-header-1": {
+      flex: "0 0 auto",
+    },
+    "scene-header-2": {
+      flex: "0 0 auto",
     },
   };
 
-  const finalStyles = { ...baseStyles, ...formatStyles[formatType] };
-
-  if (formatType === "scene-header-1")
-    return {
-      ...baseStyles,
-      fontWeight: "bold",
-      textTransform: "uppercase",
-      margin: "0",
-    };
-  if (formatType === "scene-header-2")
-    return { ...baseStyles, fontStyle: "italic", margin: "0" };
-
+  const finalStyles = { ...formatStyles[formatType], ...baseStyles };
   return finalStyles;
 };

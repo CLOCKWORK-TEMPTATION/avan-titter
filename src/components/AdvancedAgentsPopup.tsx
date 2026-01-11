@@ -8,6 +8,7 @@ import {
   MessageSquare, Users, BarChart3, Zap, Database, Globe
 } from 'lucide-react';
 
+import { AGENT_CONFIGS } from '../config/agentConfigs';
 import type { AIAgentConfig } from '../types/types';
 
 /**
@@ -76,32 +77,44 @@ const AdvancedAgentsPopup: React.FC<AdvancedAgentsPopupProps> = ({ isOpen, onClo
   const [agentOutput, setAgentOutput] = useState('');
   
   // Initialize agents from configs
-  const agents: Agent[] = [
-    {
-      id: 'analysis',
-      name: 'محلل النصوص',
-      description: 'تحليل شامل للنص والشخصيات',
-      category: 'ANALYSIS',
-      capabilities: {
-        creativeGeneration: false,
-        analyticalReasoning: true,
-        emotionalIntelligence: true
-      },
-      systemPrompt: 'أنت محلل نصوص متخصص في تحليل السيناريوهات العربية'
-    },
-    {
-      id: 'creative',
-      name: 'المساعد الإبداعي',
-      description: 'مساعدة في الكتابة الإبداعية وتطوير الأفكار',
-      category: 'CREATIVE',
-      capabilities: {
-        creativeGeneration: true,
-        analyticalReasoning: false,
-        emotionalIntelligence: true
-      },
-      systemPrompt: 'أنت مساعد إبداعي متخصص في كتابة السيناريوهات'
-    }
-  ];
+  const agents: Agent[] = AGENT_CONFIGS.map((config: AIAgentConfig) => ({
+    id: config.id || 'unknown',
+    name: config.name,
+    description: config.description,
+    category: typeof config.category === 'string' ? config.category : 'UNKNOWN',
+    capabilities: (() => {
+      if (!config.capabilities) {
+        return { creativeGeneration: false, analyticalReasoning: false, emotionalIntelligence: false };
+      }
+
+      // Handle string array capabilities
+      if (Array.isArray(config.capabilities)) {
+        return {
+          creativeGeneration: config.capabilities.includes('creativeGeneration'),
+          analyticalReasoning: config.capabilities.includes('analyticalReasoning'),
+          emotionalIntelligence: config.capabilities.includes('emotionalIntelligence'),
+          ...Object.fromEntries(config.capabilities.map(cap => [cap, true]))
+        };
+      }
+
+      // Handle object capabilities
+      return {
+        creativeGeneration: Boolean(config.capabilities.creativeGeneration),
+        analyticalReasoning: Boolean(config.capabilities.analyticalReasoning),
+        emotionalIntelligence: Boolean(config.capabilities.emotionalIntelligence),
+        ...Object.fromEntries(
+          Object.entries(config.capabilities).map(([key, value]) => [
+            key,
+            typeof value === 'boolean' ? value :
+            typeof value === 'string' ? value :
+            typeof value === 'number' ? value :
+            String(value)
+          ])
+        )
+      };
+    })(),
+    systemPrompt: config.systemPrompt || ''
+  }));
 
   /**
    * @effect
@@ -142,7 +155,7 @@ const AdvancedAgentsPopup: React.FC<AdvancedAgentsPopupProps> = ({ isOpen, onClo
             name: agent.name,
             category: agent.category,
             systemPrompt: agent.systemPrompt,
-            model: 'gemini-1.5-flash',
+            model: 'gemini-3-flash-preview',
             temperature: 0.7
           }
         })
@@ -221,7 +234,7 @@ const AdvancedAgentsPopup: React.FC<AdvancedAgentsPopupProps> = ({ isOpen, onClo
         body: JSON.stringify({
           action: 'analyze',
           content: content,
-          agentConfig: { model: 'gemini-1.5-flash', temperature: 0.7 }
+          agentConfig: { model: 'gemini-3-flash-preview', temperature: 0.7 }
         })
       });
       

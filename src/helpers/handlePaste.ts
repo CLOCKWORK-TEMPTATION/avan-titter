@@ -1,6 +1,5 @@
 import React from "react";
 import { ScreenplayClassifier } from "../classes/ScreenplayClassifier";
-import { SceneHeaderAgent } from "./SceneHeaderAgent";
 import { postProcessFormatting } from "./postProcessFormatting";
 
 const cssObjectToString = (styles: React.CSSProperties): string => {
@@ -14,7 +13,7 @@ const cssObjectToString = (styles: React.CSSProperties): string => {
 
 /**
  * @function handlePaste
- * @description معالج اللصق - يقوم بتصنيف النص المُلصق سطرًا بسطر وتطبيق التنسيق المناسب
+ * @description معالج اللصق - يقوم بتصنيف النص المُلصق باستخدام classifyBatch مع التصنيف السياقي
  * @param e - حدث اللصق
  * @param editorRef - مرجع للمحرر
  * @param getFormatStylesFn - دالة للحصول على الـ styles
@@ -31,130 +30,50 @@ export const handlePaste = (
   const pastedText = clipboardData.getData("text/plain");
 
   if (editorRef.current) {
-    const bulletCharacterPattern =/^\s*[•·∙⋅●○◦■□▪▫◆◇–—−‒―‣⁃*+]\s*([^:：]+?)\s*[:：]\s*(.*)\s*$/;
+    // استخدام classifyBatch مع التصنيف السياقي المفعّل (useContext: true)
+    const classifiedElements = ScreenplayClassifier.classifyBatch(pastedText, true);
 
-
-    const isBulletCharacterLine = (candidateLine: string): boolean => {
-      const match = candidateLine.match(bulletCharacterPattern);
-      if (!match) return false;
-
-      const characterName = (match[1] || "").trim();
-      if (!characterName) return false;
-
-      return ScreenplayClassifier.isCharacterLine(`${characterName}:`);
-    };
-
-    const lines = pastedText.split("\n");
-    let currentCharacter = "";
+    // بناء HTML من النتيجة المصنفة
     let htmlResult = "";
 
-    const ctx = { inDialogue: false };
+    for (const element of classifiedElements) {
+      const { text, type } = element;
+      const styles = getFormatStylesFn(type);
+      const styleString = cssObjectToString(styles);
 
-    let context = {
-      lastFormat: "action",
-      isInDialogueBlock: false,
-      pendingCharacterLine: false,
-    };
+      // التعامل مع رؤوس المشاهد المعقدة (scene-header-top-line)
+      if (type === "scene-header-top-line") {
+        // تقسيم النص إلى أجزاء (رقم المشهد والوقت/المكان)
+        const parts = text.split(/\s+/).filter(Boolean);
+        const sceneNum = parts[0] || "";
+        const timeLocation = parts.slice(1).join(" ");
 
-    for (const line of lines) {
-      if (ScreenplayClassifier.isBlank(line)) {
-        currentCharacter = "";
-        context.isInDialogueBlock = false;
-        context.lastFormat = "action";
-        const actionStyle = cssObjectToString(getFormatStylesFn("action"));
-        htmlResult +=
-          `<div class="action" style='${actionStyle}'></div>`;
-        continue;
-      }
+        const container = document.createElement("div");
+        container.className = "scene-header-top-line";
+        Object.assign(container.style, styles);
 
-      if (ScreenplayClassifier.isBasmala(line)) {
-        context.lastFormat = "basmala";
-        context.isInDialogueBlock = false;
-        const basmalaStyle = cssObjectToString(getFormatStylesFn("basmala"));
-        htmlResult += `<div class="basmala" style='${basmalaStyle}'>${line}</div>`;
-        continue;
-      }
+        const part1 = document.createElement("span");
+        part1.className = "scene-header-1";
+        part1.textContent = sceneNum;
+        Object.assign(part1.style, getFormatStylesFn("scene-header-1"));
+        container.appendChild(part1);
 
-      const sceneHeaderResult = SceneHeaderAgent(line, ctx, getFormatStylesFn);
-      if (sceneHeaderResult && sceneHeaderResult.processed) {
-        context.lastFormat = "scene-header";
-        context.isInDialogueBlock = false;
-        context.pendingCharacterLine = false;
-        htmlResult += sceneHeaderResult.html;
-        continue;
-      }
-
-      if (ScreenplayClassifier.isTransition(line)) {
-        context.lastFormat = "transition";
-        context.isInDialogueBlock = false;
-        context.pendingCharacterLine = false;
-        const transitionStyle = cssObjectToString(getFormatStylesFn("transition"));
-        htmlResult += `<div class="transition" style='${transitionStyle}'>${line}</div>`;
-        continue;
-      }
-
-      if (ScreenplayClassifier.isCharacterLine(line, context)) {
-        currentCharacter = line.trim().replace(":", "");
-        context.lastFormat = "character";
-        context.isInDialogueBlock = true;
-        context.pendingCharacterLine = false;
-        const characterStyle = cssObjectToString(getFormatStylesFn("character"));
-        htmlResult += `<div class="character" style='${characterStyle}'>${line}</div>`;
-        continue;
-      }
-
-      if (ScreenplayClassifier.isParenShaped(line)) {
-        context.lastFormat = "parenthetical";
-        context.pendingCharacterLine = false;
-        const parentheticalStyle = cssObjectToString(
-          getFormatStylesFn("parenthetical")
-        );
-        htmlResult += `<div class="parenthetical" style='${parentheticalStyle}'>${line}</div>`;
-        continue;
-      }
-
-      if (currentCharacter && !line.includes(":")) {
-        if (ScreenplayClassifier.isLikelyAction(line)) {
-          context.lastFormat = "action";
-          context.isInDialogueBlock = false;
-          context.pendingCharacterLine = false;
-          const cleanedLine = isBulletCharacterLine(line)
-            ? line
-            : line.replace(/^\s*[-–—]\s*/, "");
-          const actionStyle = cssObjectToString(getFormatStylesFn("action"));
-          htmlResult += `<div class="action" style='${actionStyle}'>${cleanedLine}</div>`;
-          continue;
-        } else {
-          context.lastFormat = "dialogue";
-          context.pendingCharacterLine = false;
-          const dialogueStyle = cssObjectToString(getFormatStylesFn("dialogue"));
-          htmlResult += `<div class="dialogue" style='${dialogueStyle}'>${line}</div>`;
-          continue;
+        if (timeLocation) {
+          const part2 = document.createElement("span");
+          part2.className = "scene-header-2";
+          part2.textContent = timeLocation;
+          Object.assign(part2.style, getFormatStylesFn("scene-header-2"));
+          container.appendChild(part2);
         }
-      }
 
-      if (ScreenplayClassifier.isLikelyAction(line)) {
-        context.lastFormat = "action";
-        context.isInDialogueBlock = false;
-        context.pendingCharacterLine = false;
-        const cleanedLine = isBulletCharacterLine(line)
-          ? line
-          : line.replace(/^\s*[-–—]\s*/, "");
-        const actionStyle = cssObjectToString(getFormatStylesFn("action"));
-        htmlResult += `<div class="action" style='${actionStyle}'>${cleanedLine}</div>`;
-        continue;
+        htmlResult += container.outerHTML;
+      } else {
+        // لجميع الأنواع الأخرى، أنشئ div بسيط
+        htmlResult += `<div class="${type}" style='${styleString}'>${text}</div>`;
       }
-
-      context.lastFormat = "action";
-      context.isInDialogueBlock = false;
-      context.pendingCharacterLine = false;
-      const cleanedLine = isBulletCharacterLine(line)
-        ? line
-        : line.replace(/^\s*[-–—]\s*/, "");
-      const actionStyle = cssObjectToString(getFormatStylesFn("action"));
-      htmlResult += `<div class="action" style='${actionStyle}'>${cleanedLine}</div>`;
     }
 
+    // تطبيق post-processing للتصحيح النهائي
     const correctedHtmlResult = postProcessFormatting(htmlResult, getFormatStylesFn);
 
     const selection = window.getSelection();
@@ -165,12 +84,12 @@ export const handlePaste = (
       const tempDiv = document.createElement("div");
       tempDiv.innerHTML = correctedHtmlResult;
 
-      // Apply styles to all elements before inserting
-      const divs = tempDiv.querySelectorAll("div");
-      divs.forEach((div: HTMLDivElement) => {
-        const className = div.className;
+      // تطبيق الـ styles على جميع العناصر قبل الإدراج
+      const elements = tempDiv.querySelectorAll<HTMLElement>("div, span");
+      elements.forEach((element) => {
+        const className = element.className;
         if (className) {
-          Object.assign(div.style, getFormatStylesFn(className));
+          Object.assign(element.style, getFormatStylesFn(className));
         }
       });
 
