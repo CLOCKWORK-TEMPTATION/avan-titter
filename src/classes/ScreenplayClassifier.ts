@@ -12,7 +12,7 @@ export class ScreenplayClassifier {
     "يدخل|يخرج|ينظر|يرفع|تبتسم|ترقد|تقف|يبسم|يضع|يقول|تنظر|تربت|تقوم|يشق|تشق|تضرب|يسحب|يلتفت|يقف|يجلس|تجلس|يجري|تجري|يمشي|تمشي|يركض|تركض|يصرخ|اصرخ|يبكي|تبكي|يضحك|تضحك|يغني|تغني|يرقص|ترقص|يأكل|تأكل|يشرب|تشرب|ينام|تنام|يستيقظ|تستيقظ|يكتب|تكتب|يقرأ|تقرأ|يسمع|تسمع|يشم|تشم|يلمس|تلمس|يأخذ|تأخذ|يعطي|تعطي|يفتح|تفتح|يغلق|تغلق|يبدأ|تبدأ|ينتهي|تنتهي|يذهب|تذهب|يعود|تعود|يأتي|تأتي|يموت|تموت|يحيا|تحيا|يقاتل|تقاتل|ينصر|تنتصر|يخسر|تخسر|يكتب|تكتب|يرسم|ترسم|يصمم|تخطط|تخطط|يقرر|تقرر|يفكر|تفكر|يتذكر|تذكر|يحاول|تحاول|يستطيع|تستطيع|يريد|تريد|يحتاج|تحتاج|يبحث|تبحث|يجد|تجد|يفقد|تفقد|يحمي|تحمي|يحمي|تحمي|يراقب|تراقب|يخفي|تخفي|يكشف|تكشف|يكتشف|تكتشف|يعرف|تعرف|يتعلم|تعلن|يعلم|تعلن|يوجه|وجه|يسافر|تسافر|يعود|تعود|يرحل|ترحل|يبقى|تبقى|ينتقل|تنتقل|يتغير|تتغير|ينمو|تنمو|يتطور|تتطور|يواجه|تواجه|يحل|تحل|يفشل|تفشل|ينجح|تنجح|يحقق|تحقن|يبدأ|تبدأ|ينهي|تنهي|يوقف|توقف|يستمر|تستمر|ينقطع|تنقطع|يرتبط|ترتبط|ينفصل|تنفصل|يتزوج|تتزوج|يطلق|يطلق|يولد|تولد|يكبر|تكبر|يشيخ|تشيخ|يمرض|تمرض|يشفي|تشفي|يصاب|تصيب|يتعافى|تعافي|يموت|يقتل|تقتل|يُقتل|تُقتل|يختفي|تختفي|يظهر|تظهر|يختبئ|تخبوء|يطلب|تطلب|يأمر|تأمر|يمنع|تمنع|يسمح|تسمح|يوافق|توافق|يرفض|ترفض|يعتذر|يشكر|تشكر|يحيي|تحيي|يودع|تودع|يجيب|تجيب|يسأل|تسأل|يصيح|تصيح|يهمس|تهمس|يصمت|تصمت|يتكلم|تتكلم|ينادي|تنادي|يحكي|تحكي|يروي|تروي|يقص|تقص|يضحك|تضحك|يبكي|تبكي|يتنهد|تتنهد|يئن|تئن";
   
   static readonly EXTRA_ACTION_VERBS =
-    "نرى|نسمع|نلاحظ|نقترب|نبتعد|ننتقل|ترفع|ينهض|تنهض|تقتحم|يقتحم|تفتح|يفتح|تدخل|يُظهر|يظهر|تظهر";
+    "نرى|نسمع|نلاحظ|نقترب|نبتعد|ننتقل|ترفع|ينهض|تنهض|تقتحم|يقتحم|يتبادل|يبتسم|يبدؤون|تفتح|يفتح|تدخل|يُظهر|يظهر|تظهر";
   
   static readonly ACTION_VERB_SET = new Set(
     (ScreenplayClassifier.ACTION_VERB_LIST + "|" + ScreenplayClassifier.EXTRA_ACTION_VERBS)
@@ -27,10 +27,19 @@ export class ScreenplayClassifier {
       .replace(/[\u200E\u200F\u061C]/g, "")
       .replace(/[^\u0600-\u06FF]/g, "")
       .trim();
-    return (
-      normalized.length > 0 &&
-      ScreenplayClassifier.ACTION_VERB_SET.has(normalized)
-    );
+    if (!normalized) return false;
+    if (ScreenplayClassifier.ACTION_VERB_SET.has(normalized)) return true;
+
+    // دعم الواو/الفاء/اللام الملتصقة مثل: (وتقف/فيبتسم/ليجلس)
+    const leadingParticles = ["و", "ف", "ل"];
+    for (const p of leadingParticles) {
+      if (normalized.startsWith(p) && normalized.length > 1) {
+        const candidate = normalized.slice(1);
+        if (ScreenplayClassifier.ACTION_VERB_SET.has(candidate)) return true;
+      }
+    }
+
+    return false;
   }
 
   static readonly BASMALA_RE = /^\s*بسم\s+الله\s+الرحمن\s+الرحيم\s*$/i;
@@ -429,6 +438,8 @@ export class ScreenplayClassifier {
 
     const actionStartPatterns = [
       /^\s*(?:[-–—]\s*)?(?:(?:ثم\s+)|(?:و(?:هو|هي)\s+)|(?:و\s+))*ل?(?:نرى|ننظر|نسمع|نلاحظ|يبدو|يظهر|يبدأ|ينتهي|يستمر|يتوقف|يتحرك|يحدث|يكون|يوجد|توجد|تظهر)(?:\s+\S|$)/,
+      /^\s*(?:و|ف)?(?:لنرى|نرى|نسمع|نلاحظ|نقترب|نبتعد|ننتقل)(?:\s+\S|$)/,
+      /^\s*(?:و|ف)?[يت][\u0600-\u06FF]{2,}(?:\s+\S|$)/,
       /^\s*(?:ثم\s+)?(?:(?:و(?:هو|هي)\s+)|(?:و\s+))*[يت][\u0600-\u06FF]{2,}(?:\s+\S|$)/,
       /^\s*(?:ثم\s+|و(?:هو|هي)\s+)(?:ل)?[يت][\u0600-\u06FF]+(?:\s+\S|$)/,
       /^\s*[-–—]\s*(?:(?:ثم\s+)|(?:و(?:هو|هي)\s+)|(?:و\s+))*[يت][\u0600-\u06FF]+(?:\s+\S|$)/,
@@ -811,16 +822,13 @@ export class ScreenplayClassifier {
     }
 
     // 5. لا يبدأ بفعل حركي (10 نقاط)
-    if (!this.isActionVerbStart(normalized)) {
-      score += 10;
-      reasons.push('لا يبدأ بفعل حركي');
+    if (this.isActionVerbStart(normalized) || this.matchesActionStartPattern(normalized)) {
+      score -= 20;
+      reasons.push('يبدأ كنمط حركة (سالب)');
     }
 
     // 6. لا يطابق نمط الحركة (10 نقاط)
-    if (!this.matchesActionStartPattern(normalized)) {
-      score += 10;
-      reasons.push('لا يطابق نمط الحركة');
-    }
+    // (تم إلغاء مكافأة "ليس حركة" لأنها تسبب رفع نقاط الشخصية بشكل خاطئ)
 
     // 7. أحرف عربية فقط (10 نقاط)
     const arabicOnly = /^[\s\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF:：]+$/.test(trimmed);
@@ -911,16 +919,10 @@ export class ScreenplayClassifier {
       reasons.push(`طول مقبول ${wordCount} كلمات`);
     }
 
-    // 5. لا يبدأ بفعل حركي (10 نقاط)
-    if (!this.isActionVerbStart(normalized)) {
-      score += 10;
-      reasons.push('لا يبدأ بفعل حركي');
-    }
-
-    // 6. لا يطابق نمط الحركة (10 نقاط)
-    if (!this.matchesActionStartPattern(normalized)) {
-      score += 10;
-      reasons.push('لا يطابق نمط الحركة');
+    // 5/6. إذا كان السطر يبدأ كنمط حركة، خفّض نقاط الحوار
+    if (this.isActionVerbStart(normalized) || this.matchesActionStartPattern(normalized)) {
+      score -= 25;
+      reasons.push('يبدأ كنمط حركة (سالب)');
     }
 
     // 7. ليس رأس مشهد (20 نقطة سلبية إذا كان)
@@ -1083,6 +1085,13 @@ export class ScreenplayClassifier {
     const reasons: string[] = [];
     const trimmed = line.trim();
     const wordCount = ctx.stats.currentWordCount;
+
+    const isParenShaped = /^\s*\(.*\)\s*$/.test(trimmed);
+    if (!isParenShaped) {
+      // بدون أقواس لا يجب أن ينافس كـ Parenthetical إلا في حالات نادرة جداً
+      score -= 70;
+      reasons.push('ليس بين أقواس (سالب)');
+    }
 
     // 1. يبدأ بقوس وينتهي بقوس (60 نقطة)
     if (/^\s*\(.*\)\s*$/.test(trimmed)) {
@@ -1437,6 +1446,11 @@ export class ScreenplayClassifier {
     allLines: string[],
     previousTypes?: (string | null)[]
   ): ClassificationResult {
+    const quickCheck = this.quickClassify(line);
+    if (quickCheck) {
+      return quickCheck;
+    }
+
     const ctx = this.buildContext(line, index, allLines, previousTypes);
 
     // حساب النقاط لكل نوع
