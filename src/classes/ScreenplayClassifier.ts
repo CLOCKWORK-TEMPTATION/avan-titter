@@ -266,21 +266,25 @@ export class ScreenplayClassifier {
       const rawNext = lines[i] || "";
       if (ScreenplayClassifier.isBlank(rawNext)) break;
 
-      let next = ScreenplayClassifier.normalizeLine(rawNext);
-      if (!next) break;
+      let normalizedNext = ScreenplayClassifier.normalizeLine(rawNext);
+      if (!normalizedNext) break;
 
       // 1. Check for Photomontage at the start of the line
-      const pmMatch = next.match(ScreenplayClassifier.PHOTOMONTAGE_PART_RE);
+      const pmMatch = normalizedNext.match(ScreenplayClassifier.PHOTOMONTAGE_PART_RE);
       if (pmMatch) {
         const pmText = pmMatch[0].trim();
-        // Clean up: remove all existing parens and wrap cleanly
-        const inner = pmText.replace(/^[\(\)]+|[\(\)]+$/g, "").trim();
-        const formattedPm = `(${inner})`;
+        // Ensure parens
+        let formattedPm = pmText;
+        if (!formattedPm.startsWith("(") || !formattedPm.endsWith(")")) {
+           // It might have one paren or none. Clean and wrap.
+           const inner = pmText.replace(/^[\(\)]+|[\(\)]+$/g, "").trim();
+           formattedPm = `(${inner})`;
+        }
         
         currentSceneNum = `${currentSceneNum} ${formattedPm}`;
         
         // Remove the photomontage part from 'next' to process the rest
-        let remainder = next.substring(pmMatch[0].length);
+        let remainder = normalizedNext.substring(pmMatch[0].length);
         remainder = ScreenplayClassifier.cleanupSceneHeaderRemainder(remainder); // Removes leading dashes/spaces
         
         if (!remainder) {
@@ -293,18 +297,16 @@ export class ScreenplayClassifier {
         // but we have 'consumed' the PM part. 
         // Actually, we ARE on line 'i'. If we finish processing 'remainder' as a place, we are done with line 'i'.
         // So we should update 'next' and let it fall through.
-        next = remainder;
+        normalizedNext = remainder;
         
         // Note: We don't continue; we let the rest of the logic handle 'next' (the place).
       }
 
       // 2. Prepare text for Time/Location check (handle parentheses)
-
-      // 2. Prepare text for Time/Location check (handle parentheses)
-      let textToCheck = next;
-      const isParenthesized = next.startsWith("(") && next.endsWith(")");
+      let textToCheck = normalizedNext;
+      const isParenthesized = normalizedNext.startsWith("(") && normalizedNext.endsWith(")");
       if (isParenthesized) {
-        textToCheck = next.slice(1, -1).trim();
+        textToCheck = normalizedNext.slice(1, -1).trim();
       }
 
       const timeLocationIsInOutOnly = !!timeLocation && inOutOnlyRe.test(timeLocation);
@@ -342,26 +344,26 @@ export class ScreenplayClassifier {
         }
       }
 
-      if (ScreenplayClassifier.isSceneHeaderStart(next)) break;
-      if (ScreenplayClassifier.isTransition(next)) break;
-      if (ScreenplayClassifier.isParenShaped(next) && !isParenthesized) break;
-      if (ScreenplayClassifier.parseInlineCharacterDialogue(next)) break;
+      if (ScreenplayClassifier.isSceneHeaderStart(normalizedNext)) break;
+      if (ScreenplayClassifier.isTransition(normalizedNext)) break;
+      if (ScreenplayClassifier.isParenShaped(normalizedNext) && !isParenthesized) break;
+      if (ScreenplayClassifier.parseInlineCharacterDialogue(normalizedNext)) break;
 
       // Check for Known Place (Scene Header 3) - Prioritize over Character
-      if (ScreenplayClassifier.KNOWN_PLACES_RE.test(next)) {
-        placeParts.push(next);
+      if (ScreenplayClassifier.KNOWN_PLACES_RE.test(normalizedNext)) {
+        placeParts.push(normalizedNext);
         consumedLines++;
         continue;
       }
 
-      const isChar = ScreenplayClassifier.isCharacterLine(next, {
+      const isChar = ScreenplayClassifier.isCharacterLine(normalizedNext, {
         lastFormat: "action",
         isInDialogueBlock: false,
       });
 
       if (isChar) {
         // If it has a colon, it's definitely a character (or specific format). Break.
-        if (next.includes(":") || next.includes("：")) {
+        if (normalizedNext.includes(":") || normalizedNext.includes("：")) {
           break;
         }
         
@@ -374,16 +376,16 @@ export class ScreenplayClassifier {
         // Or just assume anything following T/L that isn't an obvious Action/Transition/SceneHeader IS part of the place.
         
         // Let's assume if it looks like a character (short, no colon) BUT we are in the header block, it's a place.
-        placeParts.push(next);
+        placeParts.push(normalizedNext);
         consumedLines++;
         continue;
       }
 
-      if (ScreenplayClassifier.isLikelyAction(next)) break;
+      if (ScreenplayClassifier.isLikelyAction(normalizedNext)) break;
 
-      if (ScreenplayClassifier.isActionVerbStart(next)) break;
+      if (ScreenplayClassifier.isActionVerbStart(normalizedNext)) break;
 
-      const placeActionSplit = next.match(/^(.*?)(?:\s+-\s+)(.+)$/);
+      const placeActionSplit = normalizedNext.match(/^(.*?)(?:\s+-\s+)(.+)$/);
       if (placeActionSplit) {
         const placePart = (placeActionSplit[1] || "").trim();
         const actionPart = (placeActionSplit[2] || "").trim();
@@ -397,7 +399,7 @@ export class ScreenplayClassifier {
         }
       }
 
-      placeParts.push(next);
+      placeParts.push(normalizedNext);
       consumedLines++;
     }
 
@@ -536,7 +538,7 @@ export class ScreenplayClassifier {
     if (prevType === "scene-header-3" && nextType === "action") return true;
     if (prevType === "action" && nextType === "action") return true;
     if (prevType === "action" && nextType === "character") return true;
-    if (prevType === "character" && nextType === "dialogue") return true;
+    if (prevType === "character" && nextType === "dialogue") return false;
     if (prevType === "dialogue" && nextType === "character") return true;
     if (prevType === "dialogue" && nextType === "action") return true;
     if (prevType === "dialogue" && nextType === "transition") return true;
@@ -627,6 +629,13 @@ export class ScreenplayClassifier {
 
       // تنظيف السطر من الرموز الزائدة قبل التصنيف
       const cleanedCurrent = ScreenplayClassifier.normalizeLine(current);
+
+      // إذا أصبح السطر فارغاً بعد التنظيف (مثل سطر يحتوي فقط على نقطة أو شرطة)، نعامله كسطر فارغ
+      if (!cleanedCurrent) {
+        results.push({ text: "", type: "action" });
+        previousTypes.push("action");
+        continue;
+      }
 
       // 1. استخراج رأس المشهد (المنطق الموجود - بدون تغيير)
       const sceneHeaderParts = ScreenplayClassifier.extractSceneHeaderParts(
