@@ -9,7 +9,7 @@
 - [ ] `src/classes/ScreenplayClassifier.ts`
   - [ ] تحديث `normalizeLine()` لإزالة جميع المحارف غير المرئية
   - [ ] إضافة: `\u200B \u200C \u200D \u2060 \uFEFF \u00A0`
-  
+
 - [ ] `src/helpers/postProcessFormatting.ts`
   - [ ] تحديث `isBlankActionElement()` لاستخدام التنظيف الجديد
   - [ ] استخدام `normalizeLine()` بدلاً من `trim()` فقط
@@ -58,41 +58,19 @@ fragment.appendChild(div);
 
 ---
 
-### 3. إصلاح Enter في الكتابة اليدوية
-**المشكلة**: `handleKeyDown` يمنع Enter من إنشاء سطر جديد
+### 3. ✅ إصلاح Enter - السطر الفارغ بين الشخصية والحوار (مكتمل)
+**المشكلة**: عند الضغط على Enter من سطر character، كان يتم إنشاء سطر action فارغ
 
-**الملف**: `src/handlers/handleKeyDown.ts`
+**الحل المطبق**:
+- ✅ تعديل دالة `getNextFormatOnEnter` في `src/components/ScreenplayEditorEnhanced.tsx`
+- ✅ إضافة قواعد الانتقال الكاملة:
+  * `character` → `dialogue` (بدون فراغ)
+  * `dialogue` → `action`
+  * `parenthetical` → `dialogue`
+  * `action` → `action`
+  * `transition` → `scene-header-top-line`
 
-- [ ] إزالة `e.preventDefault()` من Enter
-- [ ] إضافة منطق إنشاء سطر جديد بالتنسيق الصحيح
-
-**الكود المطلوب**:
-```typescript
-if (e.key === "Enter" && !e.shiftKey) {
-  e.preventDefault();
-  
-  // إنشاء سطر جديد
-  const selection = window.getSelection();
-  if (selection && selection.rangeCount > 0) {
-    const range = selection.getRangeAt(0);
-    const newDiv = document.createElement('div');
-    const nextFormat = getNextFormatOnEnter(currentFormat);
-    newDiv.className = nextFormat;
-    Object.assign(newDiv.style, getFormatStyles(nextFormat));
-    newDiv.innerHTML = '<br>'; // سطر فارغ
-    
-    range.deleteContents();
-    range.insertNode(newDiv);
-    range.setStart(newDiv, 0);
-    range.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(range);
-  }
-  
-  updateContent();
-  return;
-}
-```
+**التفاصيل**: راجع ملف `todo2.md` للتفاصيل الكاملة
 
 ---
 
@@ -112,7 +90,7 @@ if (e.key === "Enter" && !e.shiftKey) {
 if (prevType && ['scene-header-1', 'scene-header-2'].includes(prevType)) {
   const wordCount = current.split(/\s+/).length;
   const hasLocationKeywords = /^(داخل|خارج|أمام|خلف|فوق|تحت|بجانب|في)\s+/i.test(current);
-  
+
   if (wordCount <= 6 && !current.includes(':') && hasLocationKeywords) {
     return 'scene-header-3';
   }
@@ -162,10 +140,10 @@ smartSystem.refineWithGemini(classifiedLines).then((refined) => {
 ## 📋 خطة التنفيذ
 
 ### المرحلة 1 (اليوم) - الإصلاحات الحرجة
-1. ✅ إصلاح `normalizeLine()` 
+1. ✅ إصلاح `normalizeLine()`
 2. ✅ تحديث `isBlank()`
 3. ✅ إصلاح `handlePaste` XSS
-4. ✅ إصلاح Enter في handleKeyDown
+4. ✅ إصلاح Enter في handleKeyDown - **مكتمل** ✅
 
 ### المرحلة 2 (غداً) - التحسينات
 5. تحسين scene-header-3 detection
@@ -182,14 +160,17 @@ smartSystem.refineWithGemini(classifiedLines).then((refined) => {
 1. **اختبار الفراغات**:
    - لصق نص يحتوي شخصية + حوار
    - التأكد من عدم وجود سطر فارغ بينهما
+   - ✅ **اختبار Enter**: الضغط على Enter من character → dialogue مباشرة
 
 2. **اختبار XSS**:
    - لصق نص يحتوي `<script>alert('test')</script>`
    - التأكد من ظهوره كنص عادي
 
-3. **اختبار Enter**:
+3. **اختبار Enter** (مكتمل ✅):
    - الكتابة اليدوية والضغط على Enter
    - التأكد من إنشاء سطر جديد بالتنسيق الصحيح
+   - character → dialogue (بدون فراغ)
+   - dialogue → action (مع فراغ)
 
 4. **اختبار scene-header-3**:
    - لصق: `مشهد 1` ثم `غرفة المكتب`
@@ -202,3 +183,4 @@ smartSystem.refineWithGemini(classifiedLines).then((refined) => {
 - إزالة `console.log` بعد انتهاء التشخيص
 - تحديث documentation بعد كل تغيير
 - عمل git commit بعد كل مرحلة
+- ✅ **مكتمل**: إصلاح السطر الفارغ بين character و dialogue (راجع todo2.md)
