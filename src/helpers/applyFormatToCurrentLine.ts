@@ -22,9 +22,32 @@ export const applyFormatToCurrentLine = (
     if (element) {
       // إذا كان إجراء Enter، نحتاج لإنشاء سطر جديد بالتنسيق المطلوب
       if (isEnterAction) {
-        // تقسيم السطر الحالي عند المؤشر
         const currentText = element.textContent || "";
-        const offset = range.startOffset;
+
+        // حساب الإزاحة الصحيحة داخل السطر
+        // في contentEditable، range.startContainer قد يكون TextNode
+        // و range.startOffset هو الإزاحة داخل هذا TextNode
+        let textNode = range.startContainer;
+        let offset = range.startOffset;
+
+        // إذا كانت العقدة نصية، نحسب الإزاحة الكلية داخل السطر
+        if (textNode.nodeType === Node.TEXT_NODE) {
+          let totalOffset = 0;
+          let currentNode = element.firstChild;
+
+          // اجتياز جميع العقد التابعة للعنصر
+          while (currentNode && currentNode !== textNode) {
+            totalOffset += currentNode.textContent?.length || 0;
+            currentNode = currentNode.nextSibling;
+          }
+
+          // إضافة الإزاحة داخل العقدة النصية الحالية
+          if (currentNode === textNode) {
+            totalOffset += offset;
+          }
+
+          offset = totalOffset;
+        }
 
         // النص قبل المؤشر يبقى في السطر الحالي
         const beforeText = currentText.slice(0, offset);
@@ -34,10 +57,10 @@ export const applyFormatToCurrentLine = (
         // تحديث السطر الحالي بالنص قبل المؤشر
         element.textContent = beforeText;
 
-        // إنشاء سطر جديد
+        // إنشاء سطر جديد فارغ (بدون afterText لأننا نريد سطراً فارغاً للحوار)
         const newLine = document.createElement('div');
         newLine.className = formatType;
-        newLine.textContent = afterText;
+        newLine.textContent = ''; // سطر فارغ بالكامل
         Object.assign(newLine.style, getFormatStylesFn(formatType));
 
         // إدراج السطر الجديد بعد السطر الحالي
