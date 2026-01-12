@@ -349,6 +349,11 @@ export class ScreenplayClassifier {
       if (ScreenplayClassifier.isParenShaped(normalizedNext) && !isParenthesized) break;
       if (ScreenplayClassifier.parseInlineCharacterDialogue(normalizedNext)) break;
 
+      const trimmedNext = normalizedNext.trim();
+      const endsWithSentencePunct = /[\.!\؟\?]$/.test(trimmedNext);
+      const hasEllipsis = /(\.\.\.|…)/.test(trimmedNext);
+      if (endsWithSentencePunct || hasEllipsis) break;
+
       // Check for Known Place (Scene Header 3) - Prioritize over Character
       if (ScreenplayClassifier.KNOWN_PLACES_RE.test(normalizedNext)) {
         placeParts.push(normalizedNext);
@@ -589,6 +594,8 @@ export class ScreenplayClassifier {
         } else {
           result.push({ text: "", type: "action" });
         }
+      } else if (spacingRule === false) {
+        // لا نضيف السطور الفارغة - نتجاهلها
       } else if (spacingRule === null) {
         result.push(...pendingBlanks);
       }
@@ -615,7 +622,7 @@ export class ScreenplayClassifier {
   static classifyBatch(text: string, useContext: boolean = false): { text: string; type: string }[] {
     const lines = text.split(/\r?\n/);
     const results: { text: string; type: string }[] = [];
-    const previousTypes: (string | null)[] = []; // تخزين الأنواع المُصنّفة
+    const previousTypes: (string | null)[] = new Array(lines.length).fill(null); // تخزين الأنواع المُصنّفة بحسب رقم السطر
 
     for (let i = 0; i < lines.length; i++) {
       const rawLine = lines[i] || "";
@@ -623,7 +630,7 @@ export class ScreenplayClassifier {
 
       if (!current) {
         results.push({ text: "", type: "action" });
-        previousTypes.push("action");
+        previousTypes[i] = "action";
         continue;
       }
 
@@ -633,7 +640,7 @@ export class ScreenplayClassifier {
       // إذا أصبح السطر فارغاً بعد التنظيف (مثل سطر يحتوي فقط على نقطة أو شرطة)، نعامله كسطر فارغ
       if (!cleanedCurrent) {
         results.push({ text: "", type: "action" });
-        previousTypes.push("action");
+        previousTypes[i] = "action";
         continue;
       }
 
@@ -655,11 +662,17 @@ export class ScreenplayClassifier {
           text: sceneHeaderTopText,
           type: "scene-header-top-line",
         });
-        previousTypes.push("scene-header-top-line");
+        previousTypes[i] = "scene-header-top-line";
+
+        for (let j = i + 1; j < i + sceneHeaderParts.consumedLines; j++) {
+          const isLastConsumed = j === i + sceneHeaderParts.consumedLines - 1;
+          previousTypes[j] = sceneHeaderParts.place && isLastConsumed
+            ? "scene-header-3"
+            : "scene-header-top-line";
+        }
 
         if (sceneHeaderParts.place) {
           results.push({ text: sceneHeaderParts.place, type: "scene-header-3" });
-          previousTypes.push("scene-header-3");
         }
 
         i += Math.max(0, sceneHeaderParts.consumedLines - 1);
@@ -675,13 +688,12 @@ export class ScreenplayClassifier {
           text: `${inlineCharacterDialogue.characterName}:`,
           type: "character",
         });
-        previousTypes.push("character");
 
         results.push({
           text: inlineCharacterDialogue.dialogueText,
           type: "dialogue",
         });
-        previousTypes.push("dialogue");
+        previousTypes[i] = "character";
 
         continue;
       }
@@ -694,11 +706,12 @@ export class ScreenplayClassifier {
 
         if (characterName) {
           results.push({ text: `${characterName}:`, type: "character" });
-          previousTypes.push("character");
 
           if (dialogueText) {
             results.push({ text: dialogueText, type: "dialogue" });
-            previousTypes.push("dialogue");
+            previousTypes[i] = "dialogue";
+          } else {
+            previousTypes[i] = "character";
           }
           continue;
         }
@@ -709,14 +722,14 @@ export class ScreenplayClassifier {
         // استخدام نظام النقاط السياقي الجديد مع تمرير previousTypes
         const result = ScreenplayClassifier.classifyWithScoring(cleanedCurrent, i, lines, previousTypes);
         results.push({ text: cleanedCurrent, type: result.type });
-        previousTypes.push(result.type);
+        previousTypes[i] = result.type;
       } else {
         // استخدام classifyHybrid القديم (للتوافق)
         const prevType = results.length > 0 ? results[results.length - 1].type : null;
         const nextLine = i < lines.length - 1 ? (lines[i + 1] || "").trim() : null;
         const type = this.classifyHybrid(cleanedCurrent, prevType, nextLine);
         results.push({ text: cleanedCurrent, type });
-        previousTypes.push(type);
+        previousTypes[i] = type;
       }
     }
 
@@ -902,6 +915,12 @@ export class ScreenplayClassifier {
       reasons.push('لا يحتوي على علامات ترقيم نهائية');
     }
 
+    const hasSentenceEndingPunct = /[\.!\؟\?]$/.test(trimmed) || /(\.\.\.|…)/.test(trimmed);
+    if (hasSentenceEndingPunct && !endsWithColon) {
+      score -= 35;
+      reasons.push('يحتوي على علامات ترقيم (سالب)');
+    }
+
     // 4. السطر التالي يبدو كحوار (25 نقطة)
     const nextLine = ctx.nextLines[0]?.line;
     if (nextLine && !this.isSceneHeaderStart(nextLine) && !this.isTransition(nextLine)) {
@@ -977,9 +996,15 @@ export class ScreenplayClassifier {
     const prevLine = ctx.previousLines[ctx.previousLines.length - 1];
     const isPrevCharacter = prevLine?.type === 'character';
     const isPrevParenthetical = prevLine?.type === 'parenthetical';
-    if (!isPrevCharacter && !isPrevParenthetical) {
+    const isPrevDialogue = prevLine?.type === 'dialogue';
+    const hasDialogueContext = isPrevCharacter || isPrevParenthetical || isPrevDialogue;
+
+    if (!hasDialogueContext) {
+      score -= 60;
+      reasons.push('لا يوجد سياق حوار (سالب)');
+
       if (this.isActionVerbStart(normalized) || this.matchesActionStartPattern(normalized)) {
-        score -= 35;
+        score -= 20;
         reasons.push('يبدو كسطر حركة بدون سياق حوار (سالب)');
       }
     }
@@ -994,6 +1019,11 @@ export class ScreenplayClassifier {
     if (isPrevParenthetical) {
       score += 50;
       reasons.push('السطر السابق ملاحظة');
+    }
+
+    if (isPrevDialogue) {
+      score += 35;
+      reasons.push('استمرار حوار');
     }
 
     // 3. ينتهي بعلامة ترقيم (15 نقطة)
@@ -1550,7 +1580,6 @@ export class ScreenplayClassifier {
     const dialogueScore = this.scoreAsDialogue(line, ctx);
     const actionScore = this.scoreAsAction(line, ctx);
     const parentheticalScore = this.scoreAsParenthetical(line, ctx);
-    const sceneHeaderScore = this.scoreAsSceneHeader(line, ctx);
 
     // تحسين إضافي: إذا كان السطر يبدأ بفعل حركي، اجعل نقطة الأكشن أعلى
     const normalizedLine = this.normalizeLine(line);
@@ -1562,7 +1591,7 @@ export class ScreenplayClassifier {
 
     // تحسين حاسم: لا تسمح لبلوك الحوار بابتلاع أسطر الأكشن
     // مثال: (Character) ثم سطر يبدأ بـ (نرى/نسمع/ترفع/ينهض...) يجب أن يبقى Action.
-    const prevType = previousTypes && previousTypes.length > 0 ? previousTypes[previousTypes.length - 1] : null;
+    const prevType = previousTypes && index > 0 ? previousTypes[index - 1] : null;
     const looksLikeActionStart = this.isActionVerbStart(normalizedLine) || this.matchesActionStartPattern(normalizedLine);
     if (prevType === 'character' && looksLikeActionStart) {
       dialogueScore.score -= 55;
@@ -1589,8 +1618,7 @@ export class ScreenplayClassifier {
       character: characterScore,
       dialogue: dialogueScore,
       action: actionScore,
-      parenthetical: parentheticalScore,
-      'scene-header': sceneHeaderScore
+      parenthetical: parentheticalScore
     };
 
     // إيجاد النوع الأعلى نقاطاً
