@@ -292,6 +292,8 @@ export default function ScreenplayEditorEnhanced() {
       "scene-header-3": "action",
       "scene-header-1": "scene-header-3",
       "scene-header-2": "scene-header-3",
+      "character": "dialogue",
+      "parenthetical": "dialogue",
     };
 
     return transitions[currentFormat] || "action";
@@ -317,8 +319,8 @@ export default function ScreenplayEditorEnhanced() {
   };
 
   // applyFormatToCurrentLine - تم نقله إلى ../helpers/applyFormatToCurrentLine.ts
-  const applyFormatToCurrentLine = (formatType: string) => {
-    applyFormatToCurrentLineHelper(formatType, getFormatStyles, setCurrentFormat);
+  const applyFormatToCurrentLine = (formatType: string, isEnterAction: boolean = false) => {
+    applyFormatToCurrentLineHelper(formatType, getFormatStyles, setCurrentFormat, isEnterAction);
   };
 
   const updateContent = () => {

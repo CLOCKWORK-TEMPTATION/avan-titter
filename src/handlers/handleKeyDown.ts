@@ -8,7 +8,7 @@ export const createHandleKeyDown = (
   currentFormat: string,
   getNextFormatOnTab: (format: string, shiftKey: boolean) => string,
   getNextFormatOnEnter: (format: string) => string,
-  applyFormatToCurrentLine: (format: string) => void,
+  applyFormatToCurrentLine: (format: string, isEnterAction?: boolean) => void,
   formatText: (command: string, value?: string) => void,
   setShowSearchDialog: (show: boolean) => void,
   setShowReplaceDialog: (show: boolean) => void,
@@ -18,11 +18,11 @@ export const createHandleKeyDown = (
     if (e.key === "Tab") {
       e.preventDefault();
       const nextFormat = getNextFormatOnTab(currentFormat, e.shiftKey);
-      applyFormatToCurrentLine(nextFormat);
+      applyFormatToCurrentLine(nextFormat, false);
     } else if (e.key === "Enter") {
       e.preventDefault();
       const nextFormat = getNextFormatOnEnter(currentFormat);
-      applyFormatToCurrentLine(nextFormat);
+      applyFormatToCurrentLine(nextFormat, true);
     } else if (e.ctrlKey || e.metaKey) {
       switch (e.key) {
         case "b":
