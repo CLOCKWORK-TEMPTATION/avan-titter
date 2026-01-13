@@ -390,17 +390,32 @@ export class ScreenplayClassifier {
 
       if (ScreenplayClassifier.isActionVerbStart(normalizedNext)) break;
 
-      const placeActionSplit = normalizedNext.match(/^(.*?)(?:\s+-\s+)(.+)$/);
+      // محاولة فصل المكان عن الوصف (Action) إذا وجدنا فاصل
+      // تحديث: جعلنا الـ Regex أكثر مرونة للفصل حتى لو المسافات غير منتظمة
+      const placeActionSplit = normalizedNext.match(/^(.*?)(?:\s*[-–—]\s*)(.+)$/);
       if (placeActionSplit) {
         const placePart = (placeActionSplit[1] || "").trim();
         const actionPart = (placeActionSplit[2] || "").trim();
 
-        if (actionPart && ScreenplayClassifier.isLikelyAction(actionPart)) {
-          if (placePart) {
+        // إذا كان الجزء الثاني (الأكشن) موجوداً
+        if (actionPart) {
+          // الشرط: إما أنه يبدو كأكشن (فعل حركي)، أو أنه جملة طويلة نسبياً (وصف مكان)
+          // نتجاوز التدقيق الصارم لأن وجود الفاصل "-" بعد عنوان مشهد غالباً يعني بداية الوصف
+          const isLongDescription = ScreenplayClassifier.wordCount(actionPart) >= 3;
+          const isActionLike = ScreenplayClassifier.isLikelyAction(actionPart);
+
+          if (placePart && (isActionLike || isLongDescription)) {
             placeParts.push(placePart);
+            
+            // تعديل السطر الحالي ليكون هو الأكشن المتبقي
+            // نضيف شرطة في البداية لضمان تصنيفه كأكشن وتنسيقه بشكل صحيح (كما في طلب المستخدم)
+            lines[i] = actionPart.startsWith("-") ? actionPart : `- ${actionPart}`;
+            
+            // نخرج من الـ loop هنا. 
+            // بما أننا لم نقم بزيادة consumedLines، فإن classifyBatch ستعيد معالجة هذا السطر (lines[i])
+            // ولكن بمحتواه الجديد (الأكشن)، مما سيؤدي لتصنيفه كـ Action منفصل.
+            break;
           }
-          lines[i] = actionPart;
-          break;
         }
       }
 

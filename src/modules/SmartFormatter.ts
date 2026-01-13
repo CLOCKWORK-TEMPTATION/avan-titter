@@ -40,6 +40,31 @@ export class SmartFormatter {
 
     classifiedLines = ScreenplayClassifier.applyEnterSpacingRules(classifiedLines);
 
+    // ========================================================================
+    // FIX: فلتر الأمان القسري - حذف أي سطر فارغ بين الشخصية والحوار
+    // ========================================================================
+    classifiedLines = classifiedLines.filter((line, index, arr) => {
+      // لا تحذف أول أو آخر سطر
+      if (index === 0 || index === arr.length - 1) return true;
+
+      const prev = arr[index - 1];
+      const next = arr[index + 1];
+
+      // هل هذا السطر "فراغ"؟ (Action أو Dialogue فارغ)
+      const isBlank = !line.text.trim();
+
+      // هل قبله شخصية وبعده حوار؟
+      const isCharacterPrev = prev.type.toLowerCase() === 'character';
+      const isDialogueNext = next.type.toLowerCase() === 'dialogue';
+
+      // إذا تحققت الشروط الثلاثة، احذف السطر فوراً
+      if (isBlank && isCharacterPrev && isDialogueNext) {
+        return false;
+      }
+      return true;
+    });
+    // ========================================================================
+
     // 4. إعادة بناء الـ HTML للمحرر
     let newHTML = '';
     classifiedLines.forEach(line => {

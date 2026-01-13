@@ -52,8 +52,10 @@ export const postProcessFormatting = (
   }
 
   const isBlankActionElement = (el: HTMLElement): boolean => {
-    if (el.className !== "action") return false;
-    return (el.textContent || "").trim() === "";
+    const text = (el.textContent || "").trim();
+    if (text !== "") return false;
+    // نعتبر الـ Dialogue الفارغ أيضاً بمثابة Action فارغ لغرض المسافات
+    return el.className === "action" || el.className === "dialogue" || el.className === "Dialogue";
   };
 
   const createBlankActionElement = (): HTMLDivElement => {
@@ -89,23 +91,36 @@ export const postProcessFormatting = (
       continue;
     }
 
-    const spacingRule = ScreenplayClassifier.getEnterSpacingRule(
-      prevNonBlankType,
-      child.className
-    );
-
-    if (spacingRule === true) {
-      if (pendingBlanks.length > 0) {
-        spacingOutput.appendChild(pendingBlanks[0]);
-      } else {
-        spacingOutput.appendChild(createBlankActionElement());
-      }
-      pendingBlanks = [];
-    } else if (spacingRule === false) {
+    // ========================================================================
+    // FIX: فرض عدم وجود مسافة بين الشخصية والحوار بغض النظر عن الـ Classifier
+    // ========================================================================
+    if (
+      (prevNonBlankType === 'character' || prevNonBlankType === 'Character') &&
+      (child.className === 'dialogue' || child.className === 'Dialogue')
+    ) {
+      // إفراغ أي مسافات معلقة دون إضافتها
       pendingBlanks = [];
     } else {
-      flushBlanks();
+      // التنفيذ الطبيعي لباقي الحالات
+      const spacingRule = ScreenplayClassifier.getEnterSpacingRule(
+        prevNonBlankType,
+        child.className
+      );
+
+      if (spacingRule === true) {
+        if (pendingBlanks.length > 0) {
+          spacingOutput.appendChild(pendingBlanks[0]);
+        } else {
+          spacingOutput.appendChild(createBlankActionElement());
+        }
+        pendingBlanks = [];
+      } else if (spacingRule === false) {
+        pendingBlanks = [];
+      } else {
+        flushBlanks();
+      }
     }
+    // ========================================================================
 
     spacingOutput.appendChild(child);
     prevNonBlankType = child.className;
