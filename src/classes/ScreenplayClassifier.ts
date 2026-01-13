@@ -1984,11 +1984,13 @@ export class ScreenplayClassifier {
       .slice(0, 5)
       .map(([pair, count]) => ({ pair, count }));
 
+    const nonEmptyLines = results.filter(r => r.text.trim() !== '');
+
     return {
-      totalLines: results.filter(r => r.text.trim() !== '').length,
+      totalLines: nonEmptyLines.length,
       needsReviewCount: needsReviewLines.length,
       needsReviewPercentage: Math.round(
-        (needsReviewLines.length / Math.max(1, results.length)) * 100
+        (needsReviewLines.length / Math.max(1, nonEmptyLines.length)) * 100
       ),
       topAmbiguousPairs
     };
