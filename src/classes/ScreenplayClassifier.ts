@@ -2,13 +2,21 @@
  * @class ScreenplayClassifier
  * @description مصنف السيناريو - يحتوي على جميع الدوال والـ patterns لتصنيف أسطر السيناريو
  */
-import { LineContext, ClassificationScore, ClassificationResult } from '../types/types';
+import { LineContext, ClassificationScore, ClassificationResult, CandidateType, BatchClassificationResult, ReviewableLineUI } from '../types/types';
 import { DocumentMemory } from './DocumentMemory';
 
 export class ScreenplayClassifier {
+  // ثوابت الأنماط
   static readonly AR_AB_LETTER = "\u0600-\u06FF";
   static readonly EASTERN_DIGITS = "٠١٢٣٤٥٦٧٨٩";
   static readonly WESTERN_DIGITS = "0123456789";
+  
+  // ثوابت حساب doubtScore
+  /** عتبة الفرق في النقاط بين المرشحين لاعتبار التصنيف غامض */
+  private static readonly SCORE_TIE_THRESHOLD = 5;
+  /** عتبة doubtScore التي عندها يُعتبر السطر يحتاج مراجعة */
+  private static readonly NEEDS_REVIEW_THRESHOLD = 60;
+  
   static readonly ACTION_VERB_LIST =
     "يدخل|يخرج|ينظر|يرفع|تبتسم|ترقد|تقف|يبسم|يضع|يقول|تنظر|تربت|تقوم|يشق|تشق|تضرب|يسحب|يلتفت|يقف|يجلس|تجلس|يجري|تجري|يمشي|تمشي|يركض|تركض|يصرخ|اصرخ|يبكي|تبكي|يضحك|تضحك|يغني|تغني|يرقص|ترقص|يأكل|تأكل|يشرب|تشرب|ينام|تنام|يستيقظ|تستيقظ|يكتب|تكتب|يقرأ|تقرأ|يسمع|تسمع|يشم|تشم|يلمس|تلمس|يأخذ|تأخذ|يعطي|تعطي|يفتح|تفتح|يغلق|تغلق|يبدأ|تبدأ|ينتهي|تنتهي|يذهب|تذهب|يعود|تعود|يأتي|تأتي|يموت|تموت|يحيا|تحيا|يقاتل|تقاتل|ينصر|تنتصر|يخسر|تخسر|يكتب|تكتب|يرسم|ترسم|يصمم|تخطط|تخطط|يقرر|تقرر|يفكر|تفكر|يتذكر|تذكر|يحاول|تحاول|يستطيع|تستطيع|يريد|تريد|يحتاج|تحتاج|يبحث|تبحث|يجد|تجد|يفقد|تفقد|يحمي|تحمي|يحمي|تحمي|يراقب|تراقب|يخفي|تخفي|يكشف|تكشف|يكتشف|تكتشف|يعرف|تعرف|يتعلم|تعلن|يعلم|تعلن|يوجه|وجه|يسافر|تسافر|يعود|تعود|يرحل|ترحل|يبقى|تبقى|ينتقل|تنتقل|يتغير|تتغير|ينمو|تنمو|يتطور|تتطور|يواجه|تواجه|يحل|تحل|يفشل|تفشل|ينجح|تنجح|يحقق|تحقن|يبدأ|تبدأ|ينهي|تنهي|يوقف|توقف|يستمر|تستمر|ينقطع|تنقطع|يرتبط|ترتبط|ينفصل|تنفصل|يتزوج|تتزوج|يطلق|يطلق|يولد|تولد|يكبر|تكبر|يشيخ|تشيخ|يمرض|تمرض|يشفي|تشفي|يصاب|تصيب|يتعافى|تعافي|يموت|يقتل|تقتل|يُقتل|تُقتل|يختفي|تختفي|يظهر|تظهر|يختبئ|تخبوء|يطلب|تطلب|يأمر|تأمر|يمنع|تمنع|يسمح|تسمح|يوافق|توافق|يرفض|ترفض|يعتذر|يشكر|تشكر|يحيي|تحيي|يودع|تودع|يجيب|تجيب|يسأل|تسأل|يصيح|تصيح|يهمس|تهمس|يصمت|تصمت|يتكلم|تتكلم|ينادي|تنادي|يحكي|تحكي|يروي|تروي|يقص|تقص|يضحك|تضحك|يبكي|تبكي|يتنهد|تتنهد|يئن|تئن";
   
@@ -1819,47 +1827,204 @@ export class ScreenplayClassifier {
   }
 
   /**
-   * حساب درجة الشك للسطر - كلما زادت الدرجة، زادت الحاجة للمراجعة
+   * حساب درجة الشك وتحديد الحاجة للمراجعة
    * @param scores جميع نقاط التصنيف
-   * @returns درجة الشك من 0 إلى 100
+   * @returns درجة الشك وعلامة المراجعة
    */
-  private static calculateDoubtScore(scores: { [type: string]: ClassificationScore }): number {
-    // ترتيب النقاط من الأعلى للأقل
-    const sortedScores = Object.entries(scores).sort((a, b) => b[1].score - a[1].score);
+  private static calculateDoubtScore(
+    scores: { [type: string]: ClassificationScore }
+  ): { doubtScore: number; needsReview: boolean } {
+    const sortedScores = (Object.entries(scores) as [string, ClassificationScore][])
+      .sort((a: [string, ClassificationScore], b: [string, ClassificationScore]) => b[1].score - a[1].score);
+    
     const highest = sortedScores[0];
     const secondHighest = sortedScores[1];
     
-    // إذا كان الفرق بين الأول والثاني صغيراً، هناك شك
-    const scoreDiff = highest ? (secondHighest ? highest[1].score - secondHighest[1].score : highest[1].score) : 0;
+    const scoreDiff = highest 
+      ? (secondHighest ? highest[1].score - secondHighest[1].score : highest[1].score) 
+      : 0;
     
-    // حساب درجة الشك
     let doubtScore = 0;
     
-    // 1. الفرق بين النقاط أقل من 20 نقطة = شك عالي
-    if (scoreDiff < 20) {
-      doubtScore += 40;
-    } else if (scoreDiff < 30) {
-      doubtScore += 20;
+    // 1. الفرق بين النقاط
+    if (scoreDiff < 15) {
+      doubtScore += 50;
+    } else if (scoreDiff < 25) {
+      doubtScore += 30;
+    } else if (scoreDiff < 35) {
+      doubtScore += 15;
     }
     
-    // 2. إذا كانت جميع النقاط منخفضة (أقل من 40)
+    // 2. النقاط المنخفضة عموماً
     if (highest && highest[1].score < 40) {
       doubtScore += 30;
+    } else if (highest && highest[1].score < 55) {
+      doubtScore += 15;
     }
     
-    // 3. إذا كان هناك أكثر من نوع بنفس النقاط العليا
+    // 3. تعادل في النقاط العليا
     const maxScore = highest ? highest[1].score : 0;
-    const ties = sortedScores.filter(s => s[1].score === maxScore).length;
+    const ties = sortedScores.filter((s: [string, ClassificationScore]) => 
+      Math.abs(s[1].score - maxScore) < ScreenplayClassifier.SCORE_TIE_THRESHOLD
+    ).length;
     if (ties > 1) {
-      doubtScore += 30;
-    }
-    
-    // 4. إذا كانت الثقة منخفضة للنوع الأعلى
-    if (highest && highest[1].confidence === 'low') {
       doubtScore += 20;
     }
     
-    return Math.min(100, doubtScore);
+    // 4. الثقة المنخفضة
+    if (highest && highest[1].confidence === 'low') {
+      doubtScore += 20;
+    } else if (highest && highest[1].confidence === 'medium') {
+      doubtScore += 10;
+    }
+    
+    const finalDoubtScore = Math.min(100, doubtScore);
+    
+    // === تحديد الحاجة للمراجعة ===
+    const needsReview = finalDoubtScore >= ScreenplayClassifier.NEEDS_REVIEW_THRESHOLD;
+    
+    return { doubtScore: finalDoubtScore, needsReview };
+  }
+
+  /**
+   * استخراج أعلى مرشحين للتصنيف مع التفاصيل
+   * @param scores جميع نقاط التصنيف
+   * @returns أعلى مرشحين أو null
+   */
+  private static extractTop2Candidates(
+    scores: { [type: string]: ClassificationScore }
+  ): [CandidateType, CandidateType] | null {
+    const sortedEntries = (Object.entries(scores) as [string, ClassificationScore][])
+      .sort((a: [string, ClassificationScore], b: [string, ClassificationScore]) => b[1].score - a[1].score);
+    
+    if (sortedEntries.length < 2) return null;
+    
+    const [first, second] = sortedEntries;
+    
+    return [
+      {
+        type: first[0],
+        score: first[1].score,
+        confidence: first[1].confidence,
+        reasons: first[1].reasons
+      },
+      {
+        type: second[0],
+        score: second[1].score,
+        confidence: second[1].confidence,
+        reasons: second[1].reasons
+      }
+    ];
+  }
+
+  /**
+   * تطبيق fallback ذكي عند التردد بين نوعين
+   * @param top2 أعلى مرشحين
+   * @param ctx السياق
+   * @param prevNonBlankType نوع السطر السابق غير الفارغ
+   * @param nextLine السطر التالي
+   * @param currentLine السطر الحالي (للتحقق من الخصائص)
+   * @returns النوع المُرجَّح مع السبب أو null
+   */
+  private static applySmartFallback(
+    top2: [CandidateType, CandidateType],
+    ctx: LineContext,
+    prevNonBlankType: string | null,
+    nextLine: string | null,
+    currentLine: string
+  ): { type: string; reason: string } | null {
+    
+    const [first, second] = top2;
+    const scoreDiff = first.score - second.score;
+    
+    // لا نطبق fallback إذا الفرق كبير
+    if (scoreDiff > 25) return null;
+    
+    const types = [first.type, second.type].sort();
+    
+    // === قاعدة 1: character vs action ===
+    if (types[0] === 'action' && types[1] === 'character') {
+      // إذا السطر التالي يبدو كحوار → character
+      if (nextLine && !this.isSceneHeaderStart(nextLine) && !this.isTransition(nextLine)) {
+        const nextNormalized = this.normalizeLine(nextLine);
+        const nextWordCount = this.wordCount(nextNormalized);
+        if (nextWordCount > 1 && nextWordCount <= 30) {
+          return { 
+            type: 'character', 
+            reason: 'السطر التالي يبدو كحوار' 
+          };
+        }
+      }
+      
+      // إذا لا يوجد سطر تالي أو السطر التالي ليس حوار → action
+      return { 
+        type: 'action', 
+        reason: 'لا يوجد حوار بعده' 
+      };
+    }
+    
+    // === قاعدة 2: dialogue vs action ===
+    if (types[0] === 'action' && types[1] === 'dialogue') {
+      // إذا السطر السابق character أو parenthetical → dialogue
+      if (prevNonBlankType === 'character' || prevNonBlankType === 'parenthetical') {
+        return { 
+          type: 'dialogue', 
+          reason: 'يأتي بعد شخصية أو ملاحظة' 
+        };
+      }
+      
+      // إذا السطر السابق dialogue → dialogue (استمرار)
+      if (prevNonBlankType === 'dialogue') {
+        return { 
+          type: 'dialogue', 
+          reason: 'استمرار حوار' 
+        };
+      }
+      
+      return { 
+        type: 'action', 
+        reason: 'لا يوجد سياق حوار' 
+      };
+    }
+    
+    // === قاعدة 3: parenthetical vs action ===
+    if (types[0] === 'action' && types[1] === 'parenthetical') {
+      // إذا السطر السابق character أو dialogue → parenthetical
+      if (prevNonBlankType === 'character' || prevNonBlankType === 'dialogue') {
+        return { 
+          type: 'parenthetical', 
+          reason: 'يأتي بعد شخصية أو حوار' 
+        };
+      }
+      
+      return { 
+        type: 'action', 
+        reason: 'ليس في سياق حوار' 
+      };
+    }
+    
+    // === قاعدة 4: character vs dialogue ===
+    if (types[0] === 'character' && types[1] === 'dialogue') {
+      // إذا السطر السابق character → dialogue
+      if (prevNonBlankType === 'character') {
+        return { 
+          type: 'dialogue', 
+          reason: 'يأتي بعد شخصية' 
+        };
+      }
+      
+      // إذا ينتهي بنقطتين → character
+      const trimmed = currentLine.trim();
+      if (trimmed.endsWith(':') || trimmed.endsWith('：')) {
+        return { 
+          type: 'character', 
+          reason: 'ينتهي بنقطتين' 
+        };
+      }
+    }
+    
+    // لا يوجد fallback مناسب
+    return null;
   }
 
   /**
@@ -1877,39 +2042,8 @@ export class ScreenplayClassifier {
     allLines: string[],
     previousTypes?: (string | null)[]
   ): ClassificationResult {
-    // 1. الفحص السريع (الأنماط الثابتة عالية الثقة)
-    const quickCheck = this.quickClassify(line);
-    if (quickCheck) {
-      return quickCheck;
-    }
-
-    // 2. بناء السياق
-    const ctx = this.buildContext(line, index, allLines, previousTypes);
-    const normalized = this.normalizeLine(line);
-
-    // 2b. حساب معلومات بلوك الحوار
-    const dialogueBlockInfo = previousTypes 
-      ? this.getDialogueBlockInfo(previousTypes, index)
-      : { isInDialogueBlock: false, blockStartType: null, distanceFromCharacter: -1 };
-
-    // 3. حساب النقاط لكل نوع مع تمرير معلومات البلوك
-    const scores = {
-      character: this.scoreAsCharacter(line, normalized, ctx),
-      dialogue: this.scoreAsDialogue(line, normalized, ctx, undefined, dialogueBlockInfo),
-      action: this.scoreAsAction(line, normalized, ctx, undefined, dialogueBlockInfo),
-      parenthetical: this.scoreAsParenthetical(line, normalized, ctx, dialogueBlockInfo),
-    };
-
-    // 4. اختيار الأعلى
-    const entries = Object.entries(scores) as [string, ClassificationScore][];
-    const winner = entries.sort((a, b) => b[1].score - a[1].score)[0];
-
-    return {
-      type: winner[0],
-      confidence: winner[1].confidence,
-      scores: scores as { [type: string]: ClassificationScore },
-      context: ctx
-    };
+    // استخدام classifyWithScoring بدلاً من إعادة تنفيذ المنطق
+    return this.classifyWithScoring(line, index, allLines, previousTypes);
   }
 
   /**
@@ -1928,7 +2062,10 @@ export class ScreenplayClassifier {
         scores: {
           basmala: { score: 100, confidence: 'high', reasons: ['يطابق نمط البسملة'] }
         },
-        context: this.buildEmptyContext()
+        context: this.buildEmptyContext(),
+        doubtScore: 0,
+        needsReview: false,
+        top2Candidates: null
       };
     }
 
@@ -1940,7 +2077,10 @@ export class ScreenplayClassifier {
         scores: {
           'scene-header-top-line': { score: 100, confidence: 'high', reasons: ['يطابق نمط رأس المشهد'] }
         },
-        context: this.buildEmptyContext()
+        context: this.buildEmptyContext(),
+        doubtScore: 0,
+        needsReview: false,
+        top2Candidates: null
       };
     }
 
@@ -1952,7 +2092,10 @@ export class ScreenplayClassifier {
         scores: {
           'scene-header-1': { score: 100, confidence: 'high', reasons: ['يطابق نمط رأس المشهد الأول'] }
         },
-        context: this.buildEmptyContext()
+        context: this.buildEmptyContext(),
+        doubtScore: 0,
+        needsReview: false,
+        top2Candidates: null
       };
     }
 
@@ -1964,7 +2107,10 @@ export class ScreenplayClassifier {
         scores: {
           transition: { score: 100, confidence: 'high', reasons: ['يطابق نمط الانتقال'] }
         },
-        context: this.buildEmptyContext()
+        context: this.buildEmptyContext(),
+        doubtScore: 0,
+        needsReview: false,
+        top2Candidates: null
       };
     }
 
@@ -1976,7 +2122,10 @@ export class ScreenplayClassifier {
         scores: {
           parenthetical: { score: 100, confidence: 'high', reasons: ['بين قوسين'] }
         },
-        context: this.buildEmptyContext()
+        context: this.buildEmptyContext(),
+        doubtScore: 0,
+        needsReview: false,
+        top2Candidates: null
       };
     }
 
@@ -2074,19 +2223,48 @@ export class ScreenplayClassifier {
       parenthetical: parentheticalScore
     };
 
+    // استخراج أعلى مرشحين
+    const top2Candidates = this.extractTop2Candidates(scores);
+    
+    // حساب درجة الشك
+    const { doubtScore, needsReview } = this.calculateDoubtScore(scores);
+    
     // إيجاد النوع الأعلى نقاطاً
     let bestType = 'action';
     let bestScore = 0;
 
-    for (const [type, score] of Object.entries(scores)) {
+    for (const [type, score] of (Object.entries(scores) as [string, ClassificationScore][])) {
       if (score.score > bestScore) {
         bestScore = score.score;
         bestType = type;
       }
     }
 
-    // حساب درجة الشك
-    const doubtScore = this.calculateDoubtScore(scores);
+    // === جديد: تطبيق fallback ذكي عند الشك ===
+    let fallbackApplied: { originalType: string; fallbackType: string; reason: string } | undefined;
+    
+    if (needsReview && top2Candidates) {
+      const prevNonBlankType = previousTypes 
+        ? this.getPrevNonBlankType(previousTypes, index) 
+        : null;
+      const nextLine = index + 1 < allLines.length ? allLines[index + 1] : null;
+      const fallback = this.applySmartFallback(
+        top2Candidates, 
+        ctx, 
+        prevNonBlankType, 
+        nextLine,
+        line
+      );
+      
+      if (fallback && fallback.type !== bestType) {
+        fallbackApplied = {
+          originalType: bestType,
+          fallbackType: fallback.type,
+          reason: fallback.reason
+        };
+        bestType = fallback.type;
+      }
+    }
 
     // === جديد: تحديث القاموس بعد تحديد النوع ===
     if (documentMemory && bestType === 'character') {
@@ -2104,7 +2282,152 @@ export class ScreenplayClassifier {
       confidence: scores[bestType].confidence,
       scores,
       context: ctx,
-      doubtScore, // إضافة درجة الشك
+      doubtScore,
+      needsReview,
+      top2Candidates,
+      fallbackApplied
+    };
+  }
+
+  /**
+   * تصنيف نص كامل وإرجاع نتائج مفصلة مع معلومات الشك
+   * @param text النص الكامل
+   * @param useContext استخدام التصنيف السياقي
+   * @returns مصفوفة من BatchClassificationResult
+   */
+  static classifyBatchDetailed(
+    text: string,
+    useContext: boolean = true
+  ): BatchClassificationResult[] {
+    const lines = text.split(/\r?\n/);
+    const results: BatchClassificationResult[] = [];
+    const previousTypes: (string | null)[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const rawLine = lines[i] || "";
+      
+      // التعامل مع السطور الفارغة
+      if (ScreenplayClassifier.isBlank(rawLine)) {
+        results.push({ 
+          text: rawLine, 
+          type: 'blank',
+          confidence: 'high',
+          doubtScore: 0,
+          needsReview: false
+        });
+        previousTypes.push('blank');
+        continue;
+      }
+
+      if (useContext) {
+        const result = ScreenplayClassifier.classifyWithScoring(
+          rawLine,
+          i,
+          lines,
+          previousTypes
+        );
+
+        results.push({
+          text: rawLine,
+          type: result.type,
+          confidence: result.confidence,
+          doubtScore: result.doubtScore || 0,
+          needsReview: result.needsReview || false,
+          top2Candidates: result.top2Candidates,
+          fallbackApplied: result.fallbackApplied
+        });
+        
+        previousTypes.push(result.type);
+      } else {
+        // Fallback للطريقة القديمة
+        results.push({
+          text: rawLine,
+          type: 'action',
+          confidence: 'medium',
+          doubtScore: 0,
+          needsReview: false
+        });
+        previousTypes.push('action');
+      }
+    }
+
+    // تحويل blank إلى action في الإخراج
+    return results.map(r => ({
+      ...r,
+      type: r.type === 'blank' ? 'action' : r.type
+    }));
+  }
+
+  /**
+   * استخراج السطور التي تحتاج مراجعة للعرض في الـ UI
+   * @param results نتائج التصنيف
+   * @returns مصفوفة من ReviewableLineUI
+   */
+  static getReviewableLines(results: BatchClassificationResult[]): ReviewableLineUI[] {
+    return results
+      .map((r, index) => ({ ...r, lineIndex: index }))
+      .filter(r => r.needsReview)
+      .map(r => ({
+        lineIndex: r.lineIndex,
+        text: r.text,
+        currentType: r.type,
+        suggestedTypes: r.top2Candidates 
+          ? [
+              {
+                type: r.top2Candidates[0].type,
+                score: r.top2Candidates[0].score,
+                reasons: r.top2Candidates[0].reasons
+              },
+              {
+                type: r.top2Candidates[1].type,
+                score: r.top2Candidates[1].score,
+                reasons: r.top2Candidates[1].reasons
+              }
+            ]
+          : [],
+        fallbackApplied: r.fallbackApplied
+      }));
+  }
+
+  /**
+   * الحصول على إحصائيات الشك للمستند
+   * @param results نتائج التصنيف
+   * @returns إحصائيات الشك
+   */
+  static getDoubtStatistics(results: BatchClassificationResult[]): {
+    totalLines: number;
+    needsReviewCount: number;
+    needsReviewPercentage: number;
+    topAmbiguousPairs: { pair: string; count: number }[];
+  } {
+    const needsReviewLines = results.filter(r => r.needsReview);
+    
+    // حساب أكثر الأزواج غموضاً
+    const pairCounts = new Map<string, number>();
+    
+    for (const line of needsReviewLines) {
+      if (line.top2Candidates) {
+        const pair = [line.top2Candidates[0].type, line.top2Candidates[1].type]
+          .sort()
+          .join(' vs ');
+        pairCounts.set(pair, (pairCounts.get(pair) || 0) + 1);
+      }
+    }
+    
+    const topAmbiguousPairs = Array.from(pairCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([pair, count]) => ({ pair, count }));
+
+    const nonEmptyLines = results.filter(r => r.text.trim() !== '');
+
+    return {
+      totalLines: nonEmptyLines.length,
+      needsReviewCount: needsReviewLines.length,
+      needsReviewPercentage: Math.round(
+        (needsReviewLines.length / Math.max(1, nonEmptyLines.length)) * 100
+      ),
+      topAmbiguousPairs
     };
   }
 }

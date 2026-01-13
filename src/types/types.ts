@@ -301,8 +301,22 @@ export interface ClassificationScore {
 }
 
 /**
+ * مرشح تصنيف مع التفاصيل
+ */
+export interface CandidateType {
+    /** نوع التصنيف */
+    type: string;
+    /** النقاط */
+    score: number;
+    /** مستوى الثقة */
+    confidence: 'high' | 'medium' | 'low';
+    /** الأسباب */
+    reasons: string[];
+}
+
+/**
  * نتيجة التصنيف الكاملة
- * توفر معلومات شاملة عن عملية التصنيف
+ * توفر معلومات شاملة عن عملية التصنيف بما في ذلك درجة الشك والمرشحين البديلين
  */
 export interface ClassificationResult {
     /** نوع المحتوى المصنف */
@@ -317,4 +331,62 @@ export interface ClassificationResult {
     doubtScore?: number;
     /** أسباب التصنيف */
     reasoning?: string[];
+    /** هل يحتاج السطر للمراجعة؟ */
+    needsReview?: boolean;
+    /** أعلى مرشحين للتصنيف */
+    top2Candidates?: [CandidateType, CandidateType] | null;
+    /** معلومات عن تطبيق fallback */
+    fallbackApplied?: {
+        originalType: string;
+        fallbackType: string;
+        reason: string;
+    };
+}
+
+/**
+ * نتيجة تصنيف سطر واحد في Batch
+ */
+export interface BatchClassificationResult {
+    /** نص السطر */
+    text: string;
+    /** نوع السطر */
+    type: string;
+    /** مستوى الثقة */
+    confidence: 'high' | 'medium' | 'low';
+    /** درجة الشك */
+    doubtScore: number;
+    /** هل يحتاج للمراجعة؟ */
+    needsReview: boolean;
+    /** أعلى مرشحين */
+    top2Candidates?: [CandidateType, CandidateType] | null;
+    /** معلومات عن تطبيق fallback */
+    fallbackApplied?: {
+        originalType: string;
+        fallbackType: string;
+        reason: string;
+    };
+}
+
+/**
+ * واجهة لعرض سطر يحتاج مراجعة في الـ UI
+ */
+export interface ReviewableLineUI {
+    /** فهرس السطر */
+    lineIndex: number;
+    /** نص السطر */
+    text: string;
+    /** النوع الحالي */
+    currentType: string;
+    /** الأنواع المقترحة */
+    suggestedTypes: {
+        type: string;
+        score: number;
+        reasons: string[];
+    }[];
+    /** معلومات عن تطبيق fallback */
+    fallbackApplied?: {
+        originalType: string;
+        fallbackType: string;
+        reason: string;
+    };
 }
