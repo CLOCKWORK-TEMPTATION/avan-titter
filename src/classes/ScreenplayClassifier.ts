@@ -819,6 +819,95 @@ export class ScreenplayClassifier {
   // ========================================================================
 
   /**
+   * فحص إذا كان السطر يبدأ بشرطة
+   * @param rawLine السطر الأصلي
+   * @returns true إذا يبدأ بشرطة
+   */
+  private static startsWithDash(rawLine: string): boolean {
+    return /^[\s]*[-–—−‒―]/.test(rawLine);
+  }
+
+  /**
+   * فحص إذا كان السطر يبدأ بشرطة مع نص بعدها
+   * @param rawLine السطر الأصلي
+   * @returns true إذا يبدأ بشرطة ويتبعها نص
+   */
+  private static startsWithDashAndText(rawLine: string): boolean {
+    return /^[\s]*[-–—−‒―]\s*\S/.test(rawLine);
+  }
+
+  /**
+   * فحص إذا كان السطر الحالي داخل بلوك حوار
+   * بلوك الحوار يبدأ بـ character وينتهي عند scene-header أو transition أو action مؤكد
+   * @param previousTypes الأنواع السابقة
+   * @param currentIndex الفهرس الحالي
+   * @returns معلومات عن بلوك الحوار
+   */
+  private static getDialogueBlockInfo(
+    previousTypes: (string | null)[],
+    currentIndex: number
+  ): { 
+    isInDialogueBlock: boolean; 
+    blockStartType: string | null;
+    distanceFromCharacter: number;
+  } {
+    const dialogueBlockTypes = ['character', 'dialogue', 'parenthetical'];
+    const blockBreakers = ['scene-header-1', 'scene-header-2', 'scene-header-3', 
+                           'scene-header-top-line', 'transition', 'basmala'];
+    
+    let distanceFromCharacter = -1;
+    let lastCharacterIndex = -1;
+    
+    // البحث للخلف عن بداية البلوك
+    for (let i = currentIndex - 1; i >= 0; i--) {
+      const type = previousTypes[i];
+      
+      // تخطي السطور الفارغة
+      if (type === 'blank' || type === null) continue;
+      
+      // إذا وصلنا لكاسر بلوك، نحن خارج الحوار
+      if (blockBreakers.includes(type)) {
+        return { 
+          isInDialogueBlock: false, 
+          blockStartType: null,
+          distanceFromCharacter: -1
+        };
+      }
+      
+      // إذا وجدنا character، نحن في بلوك حوار
+      if (type === 'character') {
+        lastCharacterIndex = i;
+        distanceFromCharacter = currentIndex - i;
+        return { 
+          isInDialogueBlock: true, 
+          blockStartType: 'character',
+          distanceFromCharacter
+        };
+      }
+      
+      // إذا وجدنا dialogue أو parenthetical، نستمر للخلف
+      if (type === 'dialogue' || type === 'parenthetical') {
+        continue;
+      }
+      
+      // إذا وجدنا action، نحن خارج بلوك الحوار
+      if (type === 'action') {
+        return { 
+          isInDialogueBlock: false, 
+          blockStartType: null,
+          distanceFromCharacter: -1
+        };
+      }
+    }
+    
+    return { 
+      isInDialogueBlock: false, 
+      blockStartType: null,
+      distanceFromCharacter: -1
+    };
+  }
+
+  /**
    * بناء سياق السطر - نافذة قبل/بعد مع إحصائيات
    * @param line السطر الحالي
    * @param index فهرس السطر (zero-based)
@@ -875,18 +964,19 @@ export class ScreenplayClassifier {
 
   /**
    * حساب نقاط التصنيف كشخصية (Character)
-   * @param line السطر الحالي
+   * @param rawLine السطر الأصلي
+   * @param normalized السطر المعالج
    * @param ctx سياق السطر
    * @returns النقاط مع مستوى الثقة والأسباب
    */
   private static scoreAsCharacter(
-    line: string,
+    rawLine: string,
+    normalized: string,
     ctx: LineContext
   ): ClassificationScore {
     let score = 0;
     const reasons: string[] = [];
-    const normalized = this.normalizeLine(line);
-    const trimmed = line.trim();
+    const trimmed = rawLine.trim();
     const wordCount = ctx.stats.currentWordCount;
 
     if (this.isActionVerbStart(normalized) || this.matchesActionStartPattern(normalized)) {
@@ -984,21 +1074,67 @@ export class ScreenplayClassifier {
 
   /**
    * حساب نقاط التصنيف كحوار (Dialogue)
-   * @param line السطر الحالي
+   * @param rawLine السطر الأصلي
+   * @param normalized السطر المعالج
    * @param ctx سياق السطر
+   * @param documentMemory ذاكرة المستند (اختياري)
+   * @param dialogueBlockInfo معلومات عن بلوك الحوار
    * @returns النقاط مع مستوى الثقة والأسباب
    */
   private static scoreAsDialogue(
-    line: string,
-    ctx: LineContext
+    rawLine: string,
+    normalized: string,
+    ctx: LineContext,
+    documentMemory?: any,
+    dialogueBlockInfo?: { isInDialogueBlock: boolean; distanceFromCharacter: number }
   ): ClassificationScore {
     let score = 0;
     const reasons: string[] = [];
-    const normalized = this.normalizeLine(line);
     const wordCount = ctx.stats.currentWordCount;
 
     const prevLine = ctx.previousLines[ctx.previousLines.length - 1];
+
+    // 1. السطر السابق شخصية (40 نقطة)
     const isPrevCharacter = prevLine?.type === 'character';
+    if (isPrevCharacter) {
+      score += 40;
+      reasons.push('السطر السابق شخصية');
+    }
+
+    // 1b. الشرطة داخل بلوك الحوار
+    if (this.startsWithDash(rawLine)) {
+      if (dialogueBlockInfo?.isInDialogueBlock) {
+        // داخل بلوك الحوار: الشرطة غالباً استكمال حوار
+        score += 35;
+        reasons.push('يبدأ بشرطة داخل بلوك حوار (استكمال/نبرة)');
+        
+        // مكافأة إضافية إذا قريب من الشخصية
+        if (dialogueBlockInfo.distanceFromCharacter <= 3) {
+          score += 15;
+          reasons.push('قريب من سطر الشخصية');
+        }
+      } else {
+        // خارج بلوك الحوار: الشرطة ليست دليل حوار
+        score -= 15;
+        reasons.push('يبدأ بشرطة خارج بلوك الحوار (سالب)');
+      }
+    }
+
+    // 1c. علامات الحوار المستمر
+    if (dialogueBlockInfo?.isInDialogueBlock) {
+      // Ellipsis في البداية = استكمال
+      if (/^[\s]*\.\.\./.test(rawLine) || /^[\s]*…/.test(rawLine)) {
+        score += 25;
+        reasons.push('يبدأ بـ ... (استكمال حوار)');
+      }
+      
+      // علامات اقتباس
+      if (/^[\s]*["«"]/.test(rawLine)) {
+        score += 20;
+        reasons.push('يبدأ بعلامة اقتباس');
+      }
+    }
+
     const isPrevParenthetical = prevLine?.type === 'parenthetical';
     const isPrevDialogue = prevLine?.type === 'dialogue';
     const hasDialogueContext = isPrevCharacter || isPrevParenthetical || isPrevDialogue;
@@ -1100,17 +1236,22 @@ export class ScreenplayClassifier {
 
   /**
    * حساب نقاط التصنيف كحركة (Action)
-   * @param line السطر الحالي
+   * @param rawLine السطر الأصلي
+   * @param normalized السطر المعالج
    * @param ctx سياق السطر
+   * @param documentMemory ذاكرة المستند (اختياري)
+   * @param dialogueBlockInfo معلومات عن بلوك الحوار
    * @returns النقاط مع مستوى الثقة والأسباب
    */
   private static scoreAsAction(
-    line: string,
-    ctx: LineContext
+    rawLine: string,
+    normalized: string,
+    ctx: LineContext,
+    documentMemory?: any,
+    dialogueBlockInfo?: { isInDialogueBlock: boolean; distanceFromCharacter: number }
   ): ClassificationScore {
     let score = 0;
     const reasons: string[] = [];
-    const normalized = this.normalizeLine(line);
     const wordCount = ctx.stats.currentWordCount;
 
     // 1. يبدأ بفعل حركي (50 نقطة)
@@ -1142,10 +1283,27 @@ export class ScreenplayClassifier {
       reasons.push('السطر التالي يبدو كحركة');
     }
 
-    // 5. يبدأ بشرطة أو dash (15 نقطة)
-    if (/^[\s\-–——]/.test(normalized)) {
-      score += 15;
-      reasons.push('يبدأ بشرطة');
+    // 5. يبدأ بشرطة - مشروطة بالسياق
+    if (this.startsWithDash(rawLine)) {
+      if (dialogueBlockInfo?.isInDialogueBlock) {
+        // داخل بلوك الحوار: الشرطة ليست دليل action
+        score -= 20;
+        reasons.push('يبدأ بشرطة داخل بلوك حوار (سالب للأكشن)');
+      } else {
+        // خارج بلوك الحوار: الشرطة دليل action
+        score += 25;
+        reasons.push('يبدأ بشرطة خارج بلوك الحوار');
+      }
+    }
+
+    // 5b. فعل حركي بعد شرطة أقوى
+    if (this.startsWithDash(rawLine) && !dialogueBlockInfo?.isInDialogueBlock) {
+      // إزالة الشرطة وفحص الفعل
+      const withoutDash = rawLine.replace(/^[\s]*[-–—−‒―]\s*/, '');
+      if (this.isActionVerbStart(withoutDash)) {
+        score += 30;
+        reasons.push('شرطة متبوعة بفعل حركي');
+      }
     }
 
     // 6. طول نصي مناسب (أكثر من 5 كلمات عادة للحركة) - 10 نقاط
@@ -1199,17 +1357,21 @@ export class ScreenplayClassifier {
 
   /**
    * حساب نقاط التصنيف كملاحظة (Parenthetical)
-   * @param line السطر الحالي
+   * @param rawLine السطر الأصلي
+   * @param normalized السطر المعالج
    * @param ctx سياق السطر
+   * @param dialogueBlockInfo معلومات عن بلوك الحوار
    * @returns النقاط مع مستوى الثقة والأسباب
    */
   private static scoreAsParenthetical(
-    line: string,
-    ctx: LineContext
+    rawLine: string,
+    normalized: string,
+    ctx: LineContext,
+    dialogueBlockInfo?: { isInDialogueBlock: boolean; distanceFromCharacter: number }
   ): ClassificationScore {
     let score = 0;
     const reasons: string[] = [];
-    const trimmed = line.trim();
+    const trimmed = rawLine.trim();
     const wordCount = ctx.stats.currentWordCount;
 
     const isParenShaped = /^\s*\(.*\)\s*$/.test(trimmed);
@@ -1250,10 +1412,28 @@ export class ScreenplayClassifier {
     }
 
     // 5. لا يبدأ بفعل حركي (10 نقاط)
-    const normalized = this.normalizeLine(line);
     if (!this.isActionVerbStart(normalized)) {
       score += 10;
       reasons.push('لا يبدأ بفعل حركي');
+    }
+
+    // 5b. شرطة مع كلمة parenthetical
+    if (this.startsWithDash(rawLine) && dialogueBlockInfo?.isInDialogueBlock) {
+      const withoutDash = rawLine.replace(/^[\s]*[-–—−‒―]\s*/, '').trim();
+      
+      const parentheticalWords = [
+        'همساً', 'بصوت', 'مبتسماً', 'باحتقار', 'بحزن', 'بغضب', 
+        'بفرح', 'بنظرة', 'ساخراً', 'متعجباً', 'بحدة', 'بهدوء'
+      ];
+      
+      const startsWithParentheticalWord = parentheticalWords.some(
+        word => withoutDash.startsWith(word)
+      );
+      
+      if (startsWithParentheticalWord && withoutDash.length < 30) {
+        score += 40;
+        reasons.push('شرطة مع كلمة ملاحظة داخل بلوك حوار');
+      }
     }
 
     // 6. يحتوي على كلمات ملاحظات شائعة (10 نقاط)
@@ -1449,13 +1629,19 @@ export class ScreenplayClassifier {
 
     // 2. بناء السياق
     const ctx = this.buildContext(line, index, allLines, previousTypes);
+    const normalized = this.normalizeLine(line);
 
-    // 3. حساب النقاط لكل نوع
+    // 2b. حساب معلومات بلوك الحوار
+    const dialogueBlockInfo = previousTypes 
+      ? this.getDialogueBlockInfo(previousTypes, index)
+      : { isInDialogueBlock: false, blockStartType: null, distanceFromCharacter: -1 };
+
+    // 3. حساب النقاط لكل نوع مع تمرير معلومات البلوك
     const scores = {
-      character: this.scoreAsCharacter(line, ctx),
-      dialogue: this.scoreAsDialogue(line, ctx),
-      action: this.scoreAsAction(line, ctx),
-      parenthetical: this.scoreAsParenthetical(line, ctx),
+      character: this.scoreAsCharacter(line, normalized, ctx),
+      dialogue: this.scoreAsDialogue(line, normalized, ctx, undefined, dialogueBlockInfo),
+      action: this.scoreAsAction(line, normalized, ctx, undefined, dialogueBlockInfo),
+      parenthetical: this.scoreAsParenthetical(line, normalized, ctx, dialogueBlockInfo),
     };
 
     // 4. اختيار الأعلى
@@ -1578,16 +1764,21 @@ export class ScreenplayClassifier {
     }
 
     const ctx = this.buildContext(line, index, allLines, previousTypes);
+    const normalized = this.normalizeLine(line);
 
-    // حساب النقاط لكل نوع
-    const characterScore = this.scoreAsCharacter(line, ctx);
-    const dialogueScore = this.scoreAsDialogue(line, ctx);
-    const actionScore = this.scoreAsAction(line, ctx);
-    const parentheticalScore = this.scoreAsParenthetical(line, ctx);
+    // حساب معلومات بلوك الحوار
+    const dialogueBlockInfo = previousTypes 
+      ? this.getDialogueBlockInfo(previousTypes, index)
+      : { isInDialogueBlock: false, blockStartType: null, distanceFromCharacter: -1 };
+
+    // حساب النقاط لكل نوع مع تمرير معلومات البلوك
+    const characterScore = this.scoreAsCharacter(line, normalized, ctx);
+    const dialogueScore = this.scoreAsDialogue(line, normalized, ctx, undefined, dialogueBlockInfo);
+    const actionScore = this.scoreAsAction(line, normalized, ctx, undefined, dialogueBlockInfo);
+    const parentheticalScore = this.scoreAsParenthetical(line, normalized, ctx, dialogueBlockInfo);
 
     // تحسين إضافي: إذا كان السطر يبدأ بفعل حركي، اجعل نقطة الأكشن أعلى
-    const normalizedLine = this.normalizeLine(line);
-    if (this.isActionVerbStart(normalizedLine)) {
+    if (this.isActionVerbStart(normalized)) {
       actionScore.score += 30;
       actionScore.confidence = 'high';
       actionScore.reasons.push('يبدأ بفعل حركي قوي');
@@ -1596,7 +1787,7 @@ export class ScreenplayClassifier {
     // تحسين حاسم: لا تسمح لبلوك الحوار بابتلاع أسطر الأكشن
     // مثال: (Character) ثم سطر يبدأ بـ (نرى/نسمع/ترفع/ينهض...) يجب أن يبقى Action.
     const prevType = previousTypes && index > 0 ? previousTypes[index - 1] : null;
-    const looksLikeActionStart = this.isActionVerbStart(normalizedLine) || this.matchesActionStartPattern(normalizedLine);
+    const looksLikeActionStart = this.isActionVerbStart(normalized) || this.matchesActionStartPattern(normalized);
     if (prevType === 'character' && looksLikeActionStart) {
       dialogueScore.score -= 55;
       dialogueScore.reasons.push('سطر حركة رغم أن السابق شخصية (سالب)');
@@ -1605,17 +1796,12 @@ export class ScreenplayClassifier {
     }
 
     // تحسين إضافي: إذا كان السطر طويلاً ويحتوي على علامات ترقيم، رجح الأكشن
-    if (line.length > 50 && this.hasSentencePunctuation(normalizedLine)) {
+    if (line.length > 50 && this.hasSentencePunctuation(normalized)) {
       actionScore.score += 20;
       actionScore.reasons.push('سطر طويل مع علامات ترقيم (غالباً أكشن)');
     }
 
-    // تحسين إضافي: إذا كان السطر يحتوي على شرطة في البداية، فهو أكشن
-    if (/^[\s]*[-\–—]/.test(line)) {
-      actionScore.score += 40;
-      actionScore.confidence = 'high';
-      actionScore.reasons.push('يبدأ بشرطة (علامة الأكشن)');
-    }
+    // ملاحظة: تمت إزالة المكافأة المطلقة للشرطة - أصبحت مشروطة بالسياق في scoreAsAction
 
     // جمع النقاط في كائن واحد
     const scores: { [type: string]: ClassificationScore } = {
