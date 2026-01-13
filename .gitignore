@@ -40,3 +40,8 @@ next-env.d.ts
 
 # OS
 Thumbs.db
+
+# Test files
+test_blank_separation.ts
+test_blank_separation.js
+demo_blank_fix.js
