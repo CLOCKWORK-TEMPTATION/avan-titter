@@ -3,6 +3,7 @@
  * @description مصنف السيناريو - يحتوي على جميع الدوال والـ patterns لتصنيف أسطر السيناريو
  */
 import { LineContext, ClassificationScore, ClassificationResult } from '../types/types';
+import { DocumentMemory } from './DocumentMemory';
 
 export class ScreenplayClassifier {
   static readonly AR_AB_LETTER = "\u0600-\u06FF";
@@ -84,6 +85,9 @@ export class ScreenplayClassifier {
     sceneHeader3: RegExp;
   };
 
+  /** ذاكرة المستند (غير static لأنها تختلف لكل مستند) */
+  private documentMemory: DocumentMemory;
+
   constructor() {
     const c = (regex: RegExp) => regex;
     this.Patterns = {
@@ -94,6 +98,22 @@ export class ScreenplayClassifier {
       },
       sceneHeader3: c(ScreenplayClassifier.KNOWN_PLACES_RE),
     };
+    this.documentMemory = new DocumentMemory();
+  }
+
+  /**
+   * الحصول على ذاكرة المستند
+   * @returns ذاكرة المستند الحالية
+   */
+  getDocumentMemory(): DocumentMemory {
+    return this.documentMemory;
+  }
+
+  /**
+   * مسح ذاكرة المستند (عند فتح مستند جديد)
+   */
+  resetDocumentMemory(): void {
+    this.documentMemory.clear();
   }
 
   static easternToWesternDigits(s: string): string {
@@ -522,14 +542,25 @@ export class ScreenplayClassifier {
 
   static matchesActionStartPattern(line: string): boolean {
     const normalized = ScreenplayClassifier.normalizeLine(line);
+    const wordCount = this.wordCount(normalized);
 
+    // === جديد: كلمة واحدة لا تُعتبر action تلقائياً ===
+    // هذا يمنع ابتلاع أسماء مثل "ياسين" و"يوسف"
+    if (wordCount === 1) {
+      // فقط الأفعال المؤكدة في ACTION_VERB_SET
+      const firstWord = normalized.trim();
+      return ScreenplayClassifier.ACTION_VERB_SET.has(firstWord);
+    }
+
+    // الأنماط الموجودة (للسطور متعددة الكلمات)
     const actionStartPatterns = [
       /^\s*(?:[-–—]\s*)?(?:(?:ثم\s+)|(?:و(?:هو|هي)\s+)|(?:و\s+))*ل?(?:نرى|ننظر|نسمع|نلاحظ|يبدو|يظهر|يبدأ|ينتهي|يستمر|يتوقف|يتحرك|يحدث|يكون|يوجد|توجد|تظهر)(?:\s+\S|$)/,
       /^\s*(?:و|ف)?(?:لنرى|نرى|نسمع|نلاحظ|نقترب|نبتعد|ننتقل)(?:\s+\S|$)/,
-      /^\s*(?:و|ف)?[يت][\u0600-\u06FF]{2,}(?:\s+\S|$)/,
-      /^\s*(?:ثم\s+)?(?:(?:و(?:هو|هي)\s+)|(?:و\s+))*[يت][\u0600-\u06FF]{2,}(?:\s+\S|$)/,
-      /^\s*(?:ثم\s+|و(?:هو|هي)\s+)(?:ل)?[يت][\u0600-\u06FF]+(?:\s+\S|$)/,
-      /^\s*[-–—]\s*(?:(?:ثم\s+)|(?:و(?:هو|هي)\s+)|(?:و\s+))*[يت][\u0600-\u06FF]+(?:\s+\S|$)/,
+      // تعديل: إضافة شرط كلمة بعد الفعل
+      /^\s*(?:و|ف)?[يت][\u0600-\u06FF]{2,}\s+\S/,  // لازم يكون فيه كلمة بعد الفعل
+      /^\s*(?:ثم\s+)?(?:(?:و(?:هو|هي)\s+)|(?:و\s+))*[يت][\u0600-\u06FF]{2,}\s+\S/,
+      /^\s*(?:ثم\s+|و(?:هو|هي)\s+)(?:ل)?[يت][\u0600-\u06FF]+\s+\S/,
+      /^\s*[-–—]\s*(?:(?:ثم\s+)|(?:و(?:هو|هي)\s+)|(?:و\s+))*[يت][\u0600-\u06FF]+\s+\S/,
       /^\s*(?:لنرى|لينظر|ليتجها|ليتجه|ليجلسا|ليجلس|لينهض|ليبتعد)(?:\s+\S|$)/,
     ];
 
@@ -620,12 +651,20 @@ export class ScreenplayClassifier {
    * دالة التصنيف بالدفعات (Batch) للنظام الجديد
    * @param text النص الكامل للسيناريو
    * @param useContext استخدام نظام التصنيف السياقي الجديد (افتراضي: false للحفاظ على التوافق)
+   * @param documentMemory ذاكرة المستند (اختياري)
    * @returns مصفوفة من السطور المصنفة
    */
-  static classifyBatch(text: string, useContext: boolean = false): { text: string; type: string }[] {
+  static classifyBatch(
+    text: string, 
+    useContext: boolean = false,
+    documentMemory?: DocumentMemory
+  ): { text: string; type: string }[] {
     const lines = text.split(/\r?\n/);
     const results: { text: string; type: string }[] = [];
     const previousTypes: (string | null)[] = new Array(lines.length).fill(null); // تخزين الأنواع المُصنّفة بحسب رقم السطر
+
+    // مسح الذاكرة في بداية كل batch جديد (اختياري - معلق حالياً)
+    // if (documentMemory) documentMemory.clear();
 
     for (let i = 0; i < lines.length; i++) {
       const rawLine = lines[i] || "";
@@ -727,15 +766,21 @@ export class ScreenplayClassifier {
 
       // 4. التصنيف باستخدام النظام الجديد أو القديم
       if (useContext) {
-        // استخدام نظام النقاط السياقي الجديد مع تمرير previousTypes
-        const result = ScreenplayClassifier.classifyWithScoring(cleanedCurrent, i, lines, previousTypes);
+        // استخدام نظام النقاط السياقي الجديد مع تمرير previousTypes والذاكرة
+        const result = ScreenplayClassifier.classifyWithScoring(
+          cleanedCurrent, 
+          i, 
+          lines, 
+          previousTypes,
+          documentMemory  // تمرير الذاكرة
+        );
         results.push({ text: cleanedCurrent, type: result.type });
         previousTypes[i] = result.type;
       } else {
         // استخدام classifyHybrid القديم (للتوافق)
         const prevType = results.length > 0 ? results[results.length - 1].type : null;
         const nextLine = i < lines.length - 1 ? (lines[i + 1] || "").trim() : null;
-        const type = this.classifyHybrid(cleanedCurrent, prevType, nextLine);
+        const type = ScreenplayClassifier.classifyHybrid(cleanedCurrent, prevType, nextLine);
         results.push({ text: cleanedCurrent, type });
         previousTypes[i] = type;
       }
@@ -743,6 +788,16 @@ export class ScreenplayClassifier {
 
     // تطبيق قواعد المسافات (Enter Spacing Rules) بعد التصنيف النهائي
     return ScreenplayClassifier.applyEnterSpacingRules(results);
+  }
+
+  /**
+   * دالة التصنيف بالدفعات باستخدام ذاكرة المستند الخاصة بهذا الـ instance
+   * @param text النص الكامل للسيناريو
+   * @param useContext استخدام نظام التصنيف السياقي الجديد (افتراضي: true)
+   * @returns مصفوفة من السطور المصنفة
+   */
+  classifyBatchWithMemory(text: string, useContext: boolean = true): { text: string; type: string }[] {
+    return ScreenplayClassifier.classifyBatch(text, useContext, this.documentMemory);
   }
 
   /**
@@ -819,6 +874,30 @@ export class ScreenplayClassifier {
   // ========================================================================
 
   /**
+   * Pass أول سريع لجمع الشخصيات عالية الثقة
+   * يُستدعى قبل التصنيف الكامل
+   * @param lines جميع السطور
+   */
+  preProcessForCharacters(lines: string[]): void {
+    for (const line of lines) {
+      const trimmed = line.trim();
+      
+      // شخصية مؤكدة: تنتهي بـ : وقصيرة
+      if ((trimmed.endsWith(':') || trimmed.endsWith('：')) && 
+          ScreenplayClassifier.wordCount(trimmed) <= 5) {
+        
+        // تأكد أنها ليست scene header أو transition
+        if (!ScreenplayClassifier.isSceneHeaderStart(trimmed) &&
+            !ScreenplayClassifier.isTransition(trimmed)) {
+          
+          const name = trimmed.replace(/[:：\s]+$/, '');
+          this.documentMemory.addCharacter(name, 'high');
+        }
+      }
+    }
+  }
+
+  /**
    * بناء سياق السطر - نافذة قبل/بعد مع إحصائيات
    * @param line السطر الحالي
    * @param index فهرس السطر (zero-based)
@@ -877,11 +956,13 @@ export class ScreenplayClassifier {
    * حساب نقاط التصنيف كشخصية (Character)
    * @param line السطر الحالي
    * @param ctx سياق السطر
+   * @param documentMemory ذاكرة المستند (اختياري)
    * @returns النقاط مع مستوى الثقة والأسباب
    */
   private static scoreAsCharacter(
     line: string,
-    ctx: LineContext
+    ctx: LineContext,
+    documentMemory?: DocumentMemory
   ): ClassificationScore {
     let score = 0;
     const reasons: string[] = [];
@@ -889,9 +970,40 @@ export class ScreenplayClassifier {
     const trimmed = line.trim();
     const wordCount = ctx.stats.currentWordCount;
 
-    if (this.isActionVerbStart(normalized) || this.matchesActionStartPattern(normalized)) {
-      score -= 45;
-      reasons.push('يبدو كسطر حركة (سالب)');
+    // === جديد: فحص القاموس أولاً ===
+    if (documentMemory) {
+      const nameToCheck = trimmed.replace(/[:：\s]+$/, '');
+      const knownStatus = documentMemory.isKnownCharacter(nameToCheck);
+      
+      if (knownStatus) {
+        if (knownStatus.confidence === 'high') {
+          score += 60;
+          reasons.push('شخصية معروفة من المستند (ثقة عالية)');
+        } else if (knownStatus.confidence === 'medium') {
+          score += 40;
+          reasons.push('شخصية معروفة من المستند (ثقة متوسطة)');
+        } else {
+          score += 20;
+          reasons.push('شخصية معروفة من المستند (ثقة منخفضة)');
+        }
+      }
+    }
+
+    // === تعديل: فحص أنماط الأكشن مشروط بالقاموس ===
+    const looksLikeAction = this.isActionVerbStart(normalized) || this.matchesActionStartPattern(normalized);
+    
+    if (looksLikeAction) {
+      // إذا كان الاسم معروف في القاموس، لا تخصم كثيراً
+      const nameToCheck = trimmed.replace(/[:：\s]+$/, '');
+      const isKnown = documentMemory?.isKnownCharacter(nameToCheck);
+      
+      if (isKnown) {
+        score -= 15;  // خصم أقل
+        reasons.push('يشبه نمط حركة لكنه شخصية معروفة (سالب مخفف)');
+      } else {
+        score -= 45;  // الخصم الأصلي
+        reasons.push('يبدو كسطر حركة (سالب)');
+      }
     }
 
     // 1. ينتهي بنقطتين (:) أو (：) - 50 نقطة
@@ -1102,21 +1214,47 @@ export class ScreenplayClassifier {
    * حساب نقاط التصنيف كحركة (Action)
    * @param line السطر الحالي
    * @param ctx سياق السطر
+   * @param documentMemory ذاكرة المستند (اختياري)
    * @returns النقاط مع مستوى الثقة والأسباب
    */
   private static scoreAsAction(
     line: string,
-    ctx: LineContext
+    ctx: LineContext,
+    documentMemory?: DocumentMemory
   ): ClassificationScore {
     let score = 0;
     const reasons: string[] = [];
     const normalized = this.normalizeLine(line);
     const wordCount = ctx.stats.currentWordCount;
 
-    // 1. يبدأ بفعل حركي (50 نقطة)
+    // === جديد: خصم إذا كان اسم شخصية معروف ===
+    if (documentMemory) {
+      const trimmed = line.trim().replace(/[:：\s]+$/, '');
+      const knownStatus = documentMemory.isKnownCharacter(trimmed);
+      
+      if (knownStatus) {
+        if (knownStatus.confidence === 'high') {
+          score -= 50;
+          reasons.push('اسم شخصية معروف (سالب قوي)');
+        } else if (knownStatus.confidence === 'medium') {
+          score -= 30;
+          reasons.push('اسم شخصية معروف (سالب)');
+        }
+      }
+    }
+
+    // === تعديل: أنماط الأكشن مشروطة ===
     if (this.isActionVerbStart(normalized)) {
-      score += 50;
-      reasons.push('يبدأ بفعل حركي');
+      // تحقق أن السطر ليس كلمة واحدة فقط (احتمال اسم شخصية)
+      const wordCount = ctx.stats.currentWordCount;
+      
+      if (wordCount === 1) {
+        score += 20;  // مكافأة أقل لكلمة واحدة
+        reasons.push('يبدأ بفعل حركي (كلمة واحدة)');
+      } else {
+        score += 50;  // المكافأة الكاملة
+        reasons.push('يبدأ بفعل حركي');
+      }
     }
 
     // 2. يطابق نمط الحركة (40 نقطة)
@@ -1564,13 +1702,15 @@ export class ScreenplayClassifier {
    * @param index فهرس السطر
    * @param allLines جميع السطور
    * @param previousTypes أنواع السطور السابقة (اختياري)
+   * @param documentMemory ذاكرة المستند (اختياري)
    * @returns نتيجة التصنيف الكاملة
    */
   static classifyWithScoring(
     line: string,
     index: number,
     allLines: string[],
-    previousTypes?: (string | null)[]
+    previousTypes?: (string | null)[],
+    documentMemory?: DocumentMemory
   ): ClassificationResult {
     const quickCheck = this.quickClassify(line);
     if (quickCheck) {
@@ -1580,9 +1720,9 @@ export class ScreenplayClassifier {
     const ctx = this.buildContext(line, index, allLines, previousTypes);
 
     // حساب النقاط لكل نوع
-    const characterScore = this.scoreAsCharacter(line, ctx);
+    const characterScore = this.scoreAsCharacter(line, ctx, documentMemory);
     const dialogueScore = this.scoreAsDialogue(line, ctx);
-    const actionScore = this.scoreAsAction(line, ctx);
+    const actionScore = this.scoreAsAction(line, ctx, documentMemory);
     const parentheticalScore = this.scoreAsParenthetical(line, ctx);
 
     // تحسين إضافي: إذا كان السطر يبدأ بفعل حركي، اجعل نقطة الأكشن أعلى
@@ -1638,6 +1778,17 @@ export class ScreenplayClassifier {
 
     // حساب درجة الشك
     const doubtScore = this.calculateDoubtScore(scores);
+
+    // === جديد: تحديث القاموس بعد تحديد النوع ===
+    if (documentMemory && bestType === 'character') {
+      const trimmed = line.trim();
+      const endsWithColon = trimmed.endsWith(':') || trimmed.endsWith('：');
+      const confidence = endsWithColon ? 'high' : 'medium';
+      
+      // استخراج اسم الشخصية
+      const characterName = trimmed.replace(/[:：\s]+$/, '');
+      documentMemory.addCharacter(characterName, confidence);
+    }
 
     return {
       type: bestType,
