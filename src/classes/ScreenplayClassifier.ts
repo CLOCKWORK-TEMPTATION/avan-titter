@@ -147,6 +147,72 @@ export class ScreenplayClassifier {
     return !line || line.trim() === "";
   }
 
+  /**
+   * الحصول على نوع آخر سطر غير فارغ
+   * @param previousTypes مصفوفة الأنواع السابقة
+   * @param currentIndex الفهرس الحالي
+   * @returns النوع أو null
+   */
+  private static getPrevNonBlankType(
+    previousTypes: (string | null)[],
+    currentIndex: number
+  ): string | null {
+    for (let i = currentIndex - 1; i >= 0; i--) {
+      const type = previousTypes[i];
+      if (type && type !== 'blank') {
+        return type;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * الحصول على عدة أنواع سابقة غير فارغة
+   * @param previousTypes مصفوفة الأنواع السابقة
+   * @param currentIndex الفهرس الحالي
+   * @param count عدد الأنواع المطلوبة (افتراضي: 2)
+   * @returns مصفوفة الأنواع
+   */
+  private static getPrevNonBlankTypes(
+    previousTypes: (string | null)[],
+    currentIndex: number,
+    count: number = 2
+  ): (string | null)[] {
+    const result: (string | null)[] = [];
+    
+    for (let i = currentIndex - 1; i >= 0 && result.length < count; i--) {
+      const type = previousTypes[i];
+      if (type && type !== 'blank') {
+        result.push(type);
+      }
+    }
+    
+    return result;
+  }
+
+  /**
+   * فحص إذا كان السطر الحالي داخل بلوك حوار
+   * @param previousTypes الأنواع السابقة
+   * @param currentIndex الفهرس الحالي
+   * @returns true إذا كان داخل بلوك حوار
+   */
+  private static isInDialogueBlock(
+    previousTypes: (string | null)[],
+    currentIndex: number
+  ): boolean {
+    const prevTypes = this.getPrevNonBlankTypes(previousTypes, currentIndex, 3);
+    
+    // بلوك الحوار: character أو dialogue أو parenthetical
+    const dialogueBlockTypes = ['character', 'dialogue', 'parenthetical'];
+    
+    // إذا كان آخر سطر غير فارغ من بلوك الحوار
+    if (prevTypes.length > 0 && dialogueBlockTypes.includes(prevTypes[0] || '')) {
+      return true;
+    }
+    
+    return false;
+  }
+
   static isBasmala(line: string): boolean {
     const normalizedLine = line.trim();
     const basmalaPatterns = [
@@ -537,6 +603,11 @@ export class ScreenplayClassifier {
   }
 
   static getEnterSpacingRule(prevType: string, nextType: string): boolean | null {
+    // === جديد: تجاهل blank في قواعد التباعد ===
+    if (prevType === 'blank' || nextType === 'blank') {
+      return null;  // لا قاعدة محددة
+    }
+
     if (
       prevType === "basmala" &&
       (nextType === "scene-header-1" || nextType === "scene-header-top-line")
@@ -631,9 +702,10 @@ export class ScreenplayClassifier {
       const rawLine = lines[i] || "";
       const current = rawLine.trim();
 
+      // === تعديل: استخدام blank بدلاً من action للسطور الفارغة ===
       if (!current) {
-        results.push({ text: "", type: "action" });
-        previousTypes[i] = "action";
+        results.push({ text: "", type: "blank" });
+        previousTypes[i] = "blank";
         continue;
       }
 
@@ -642,8 +714,8 @@ export class ScreenplayClassifier {
 
       // إذا أصبح السطر فارغاً بعد التنظيف (مثل سطر يحتوي فقط على نقطة أو شرطة)، نعامله كسطر فارغ
       if (!cleanedCurrent) {
-        results.push({ text: "", type: "action" });
-        previousTypes[i] = "action";
+        results.push({ text: "", type: "blank" });
+        previousTypes[i] = "blank";
         continue;
       }
 
@@ -742,7 +814,13 @@ export class ScreenplayClassifier {
     }
 
     // تطبيق قواعد المسافات (Enter Spacing Rules) بعد التصنيف النهائي
-    return ScreenplayClassifier.applyEnterSpacingRules(results);
+    const spacedResults = ScreenplayClassifier.applyEnterSpacingRules(results);
+    
+    // === جديد: تحويل blank إلى action في الإخراج النهائي للتوافق ===
+    return spacedResults.map(r => ({
+      ...r,
+      type: r.type === 'blank' ? 'action' : r.type
+    }));
   }
 
   /**
@@ -836,25 +914,48 @@ export class ScreenplayClassifier {
     const normalized = this.normalizeLine(line);
     const wordCount = this.wordCount(normalized);
 
-    // بناء نافذة السطور السابقة
+    // === تعديل: بناء نافذة السطور السابقة (غير الفارغة) ===
     const previousLines: { line: string; type: string }[] = [];
-    for (let i = Math.max(0, index - WINDOW_SIZE); i < index; i++) {
-      previousLines.push({
-        line: allLines[i] || '',
-        type: previousTypes?.[i] || 'unknown'
-      });
+    let collected = 0;
+    
+    for (let i = index - 1; i >= 0 && collected < WINDOW_SIZE; i--) {
+      const line = allLines[i] || '';
+      const type = previousTypes?.[i] || 'unknown';
+      
+      // تخطي السطور الفارغة
+      if (type === 'blank' || this.isBlank(line)) {
+        continue;
+      }
+      
+      previousLines.unshift({ line, type });
+      collected++;
     }
 
-    // بناء نافذة السطور التالية
+    // === تعديل: بناء نافذة السطور التالية (غير الفارغة) ===
     const nextLines: { line: string }[] = [];
-    for (let i = index + 1; i < Math.min(allLines.length, index + WINDOW_SIZE + 1); i++) {
-      nextLines.push({
-        line: allLines[i] || ''
-      });
+    collected = 0;
+    
+    for (let i = index + 1; i < allLines.length && collected < WINDOW_SIZE; i++) {
+      const line = allLines[i] || '';
+      
+      // تخطي السطور الفارغة
+      if (this.isBlank(line)) {
+        continue;
+      }
+      
+      nextLines.push({ line });
+      collected++;
     }
 
-    // حساب إحصائيات السطر التالي
-    const nextLine = index + 1 < allLines.length ? allLines[index + 1] : null;
+    // حساب إحصائيات السطر التالي (أول سطر غير فارغ)
+    let nextLine: string | null = null;
+    for (let i = index + 1; i < allLines.length; i++) {
+      if (!this.isBlank(allLines[i])) {
+        nextLine = allLines[i];
+        break;
+      }
+    }
+    
     const nextWordCount = nextLine ? this.wordCount(this.normalizeLine(nextLine)) : undefined;
     const nextLineLength = nextLine?.length ?? undefined;
     const nextHasPunctuation = nextLine ? this.hasSentencePunctuation(nextLine) : undefined;
@@ -1593,11 +1694,16 @@ export class ScreenplayClassifier {
       actionScore.reasons.push('يبدأ بفعل حركي قوي');
     }
 
+    // === تعديل: استخدام prevNonBlankType بدلاً من prevType مباشرة ===
+    const prevNonBlankType = previousTypes 
+      ? this.getPrevNonBlankType(previousTypes, index) 
+      : null;
+    
     // تحسين حاسم: لا تسمح لبلوك الحوار بابتلاع أسطر الأكشن
     // مثال: (Character) ثم سطر يبدأ بـ (نرى/نسمع/ترفع/ينهض...) يجب أن يبقى Action.
-    const prevType = previousTypes && index > 0 ? previousTypes[index - 1] : null;
     const looksLikeActionStart = this.isActionVerbStart(normalizedLine) || this.matchesActionStartPattern(normalizedLine);
-    if (prevType === 'character' && looksLikeActionStart) {
+    
+    if (prevNonBlankType === 'character' && looksLikeActionStart) {
       dialogueScore.score -= 55;
       dialogueScore.reasons.push('سطر حركة رغم أن السابق شخصية (سالب)');
       actionScore.score += 25;
