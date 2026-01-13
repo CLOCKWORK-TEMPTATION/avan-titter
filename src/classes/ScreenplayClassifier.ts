@@ -2,7 +2,7 @@
  * @class ScreenplayClassifier
  * @description مصنف السيناريو - يحتوي على جميع الدوال والـ patterns لتصنيف أسطر السيناريو
  */
-import { LineContext, ClassificationScore, ClassificationResult, CandidateType } from '../types/types';
+import { LineContext, ClassificationScore, ClassificationResult, CandidateType, BatchClassificationResult, ReviewableLineUI } from '../types/types';
 
 export class ScreenplayClassifier {
   static readonly AR_AB_LETTER = "\u0600-\u06FF";
@@ -1840,6 +1840,146 @@ export class ScreenplayClassifier {
       needsReview,
       top2Candidates,
       fallbackApplied
+    };
+  }
+
+  /**
+   * تصنيف نص كامل وإرجاع نتائج مفصلة مع معلومات الشك
+   * @param text النص الكامل
+   * @param useContext استخدام التصنيف السياقي
+   * @returns مصفوفة من BatchClassificationResult
+   */
+  static classifyBatchDetailed(
+    text: string,
+    useContext: boolean = true
+  ): BatchClassificationResult[] {
+    const lines = text.split(/\r?\n/);
+    const results: BatchClassificationResult[] = [];
+    const previousTypes: (string | null)[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const rawLine = lines[i] || "";
+      
+      // التعامل مع السطور الفارغة
+      if (ScreenplayClassifier.isBlank(rawLine)) {
+        results.push({ 
+          text: rawLine, 
+          type: 'blank',
+          confidence: 'high',
+          doubtScore: 0,
+          needsReview: false
+        });
+        previousTypes.push('blank');
+        continue;
+      }
+
+      if (useContext) {
+        const result = ScreenplayClassifier.classifyWithScoring(
+          rawLine,
+          i,
+          lines,
+          previousTypes
+        );
+
+        results.push({
+          text: rawLine,
+          type: result.type,
+          confidence: result.confidence,
+          doubtScore: result.doubtScore || 0,
+          needsReview: result.needsReview || false,
+          top2Candidates: result.top2Candidates,
+          fallbackApplied: result.fallbackApplied
+        });
+        
+        previousTypes.push(result.type);
+      } else {
+        // Fallback للطريقة القديمة
+        results.push({
+          text: rawLine,
+          type: 'action',
+          confidence: 'medium',
+          doubtScore: 0,
+          needsReview: false
+        });
+        previousTypes.push('action');
+      }
+    }
+
+    // تحويل blank إلى action في الإخراج
+    return results.map(r => ({
+      ...r,
+      type: r.type === 'blank' ? 'action' : r.type
+    }));
+  }
+
+  /**
+   * استخراج السطور التي تحتاج مراجعة للعرض في الـ UI
+   * @param results نتائج التصنيف
+   * @returns مصفوفة من ReviewableLineUI
+   */
+  static getReviewableLines(results: BatchClassificationResult[]): ReviewableLineUI[] {
+    return results
+      .map((r, index) => ({ ...r, lineIndex: index }))
+      .filter(r => r.needsReview)
+      .map(r => ({
+        lineIndex: r.lineIndex,
+        text: r.text,
+        currentType: r.type,
+        suggestedTypes: r.top2Candidates 
+          ? [
+              {
+                type: r.top2Candidates[0].type,
+                score: r.top2Candidates[0].score,
+                reasons: r.top2Candidates[0].reasons
+              },
+              {
+                type: r.top2Candidates[1].type,
+                score: r.top2Candidates[1].score,
+                reasons: r.top2Candidates[1].reasons
+              }
+            ]
+          : [],
+        fallbackApplied: r.fallbackApplied
+      }));
+  }
+
+  /**
+   * الحصول على إحصائيات الشك للمستند
+   * @param results نتائج التصنيف
+   * @returns إحصائيات الشك
+   */
+  static getDoubtStatistics(results: BatchClassificationResult[]): {
+    totalLines: number;
+    needsReviewCount: number;
+    needsReviewPercentage: number;
+    topAmbiguousPairs: { pair: string; count: number }[];
+  } {
+    const needsReviewLines = results.filter(r => r.needsReview);
+    
+    // حساب أكثر الأزواج غموضاً
+    const pairCounts = new Map<string, number>();
+    
+    for (const line of needsReviewLines) {
+      if (line.top2Candidates) {
+        const pair = [line.top2Candidates[0].type, line.top2Candidates[1].type]
+          .sort()
+          .join(' vs ');
+        pairCounts.set(pair, (pairCounts.get(pair) || 0) + 1);
+      }
+    }
+    
+    const topAmbiguousPairs = Array.from(pairCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([pair, count]) => ({ pair, count }));
+
+    return {
+      totalLines: results.filter(r => r.type !== 'action' || r.text.trim() !== '').length,
+      needsReviewCount: needsReviewLines.length,
+      needsReviewPercentage: Math.round(
+        (needsReviewLines.length / Math.max(1, results.length)) * 100
+      ),
+      topAmbiguousPairs
     };
   }
 }
