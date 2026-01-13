@@ -125,9 +125,17 @@ export class ScreenplayClassifier {
       ScreenplayClassifier.normalizeSeparators(input)
     )
       .replace(/[\u200f\u200e\ufeff\t]+/g, "")
-      // إزالة الرموز الزائدة من البداية فقط
-      .replace(/^[\s\u200E\u200F\u061C\ufeFF]*[•·∙⋅●○◦■□▪▫◆◇–—−‒―‣⁃*+\-]+/, "")
       .trim();
+  }
+
+  /**
+   * تطبيع السطر للتحليل اللغوي - يحذف bullets ولكن يحتفظ بالشرطات
+   * هذه الدالة تُستخدم للتحليل اللغوي فقط (مثل فحص الأفعال)
+   */
+  static normalizeForAnalysis(input: string): string {
+    return this.normalizeLine(input)
+      // إزالة bullets فقط (بدون الشرطات)
+      .replace(/^[\s\u200E\u200F\u061C\ufeFF]*[•·∙⋅●○◦■□▪▫◆◇]+\s*/, "");
   }
 
   static textInsideParens(s: string): string {
@@ -833,7 +841,7 @@ export class ScreenplayClassifier {
     previousTypes?: (string | null)[]
   ): LineContext {
     const WINDOW_SIZE = 3;
-    const normalized = this.normalizeLine(line);
+    const normalized = this.normalizeForAnalysis(line);
     const wordCount = this.wordCount(normalized);
 
     // بناء نافذة السطور السابقة
@@ -855,7 +863,7 @@ export class ScreenplayClassifier {
 
     // حساب إحصائيات السطر التالي
     const nextLine = index + 1 < allLines.length ? allLines[index + 1] : null;
-    const nextWordCount = nextLine ? this.wordCount(this.normalizeLine(nextLine)) : undefined;
+    const nextWordCount = nextLine ? this.wordCount(this.normalizeForAnalysis(nextLine)) : undefined;
     const nextLineLength = nextLine?.length ?? undefined;
     const nextHasPunctuation = nextLine ? this.hasSentencePunctuation(nextLine) : undefined;
 
@@ -875,18 +883,19 @@ export class ScreenplayClassifier {
 
   /**
    * حساب نقاط التصنيف كشخصية (Character)
-   * @param line السطر الحالي
+   * @param rawLine السطر الأصلي (كما كتبه المستخدم)
+   * @param normalized السطر بعد التنظيف للتحليل اللغوي
    * @param ctx سياق السطر
    * @returns النقاط مع مستوى الثقة والأسباب
    */
   private static scoreAsCharacter(
-    line: string,
+    rawLine: string,
+    normalized: string,
     ctx: LineContext
   ): ClassificationScore {
     let score = 0;
     const reasons: string[] = [];
-    const normalized = this.normalizeLine(line);
-    const trimmed = line.trim();
+    const trimmed = rawLine.trim();
     const wordCount = ctx.stats.currentWordCount;
 
     if (this.isActionVerbStart(normalized) || this.matchesActionStartPattern(normalized)) {
@@ -984,17 +993,18 @@ export class ScreenplayClassifier {
 
   /**
    * حساب نقاط التصنيف كحوار (Dialogue)
-   * @param line السطر الحالي
+   * @param rawLine السطر الأصلي (كما كتبه المستخدم)
+   * @param normalized السطر بعد التنظيف للتحليل اللغوي
    * @param ctx سياق السطر
    * @returns النقاط مع مستوى الثقة والأسباب
    */
   private static scoreAsDialogue(
-    line: string,
+    rawLine: string,
+    normalized: string,
     ctx: LineContext
   ): ClassificationScore {
     let score = 0;
     const reasons: string[] = [];
-    const normalized = this.normalizeLine(line);
     const wordCount = ctx.stats.currentWordCount;
 
     const prevLine = ctx.previousLines[ctx.previousLines.length - 1];
@@ -1100,17 +1110,18 @@ export class ScreenplayClassifier {
 
   /**
    * حساب نقاط التصنيف كحركة (Action)
-   * @param line السطر الحالي
+   * @param rawLine السطر الأصلي (كما كتبه المستخدم)
+   * @param normalized السطر بعد التنظيف للتحليل اللغوي
    * @param ctx سياق السطر
    * @returns النقاط مع مستوى الثقة والأسباب
    */
   private static scoreAsAction(
-    line: string,
+    rawLine: string,
+    normalized: string,
     ctx: LineContext
   ): ClassificationScore {
     let score = 0;
     const reasons: string[] = [];
-    const normalized = this.normalizeLine(line);
     const wordCount = ctx.stats.currentWordCount;
 
     // 1. يبدأ بفعل حركي (50 نقطة)
@@ -1142,8 +1153,8 @@ export class ScreenplayClassifier {
       reasons.push('السطر التالي يبدو كحركة');
     }
 
-    // 5. يبدأ بشرطة أو dash (15 نقطة)
-    if (/^[\s\-–——]/.test(normalized)) {
+    // 5. يبدأ بشرطة أو dash (15 نقطة) - استخدم rawLine
+    if (/^[\s]*[-–—]/.test(rawLine)) {
       score += 15;
       reasons.push('يبدأ بشرطة');
     }
@@ -1199,17 +1210,19 @@ export class ScreenplayClassifier {
 
   /**
    * حساب نقاط التصنيف كملاحظة (Parenthetical)
-   * @param line السطر الحالي
+   * @param rawLine السطر الأصلي (كما كتبه المستخدم)
+   * @param normalized السطر بعد التنظيف للتحليل اللغوي
    * @param ctx سياق السطر
    * @returns النقاط مع مستوى الثقة والأسباب
    */
   private static scoreAsParenthetical(
-    line: string,
+    rawLine: string,
+    normalized: string,
     ctx: LineContext
   ): ClassificationScore {
     let score = 0;
     const reasons: string[] = [];
-    const trimmed = line.trim();
+    const trimmed = rawLine.trim();
     const wordCount = ctx.stats.currentWordCount;
 
     const isParenShaped = /^\s*\(.*\)\s*$/.test(trimmed);
@@ -1250,7 +1263,6 @@ export class ScreenplayClassifier {
     }
 
     // 5. لا يبدأ بفعل حركي (10 نقاط)
-    const normalized = this.normalizeLine(line);
     if (!this.isActionVerbStart(normalized)) {
       score += 10;
       reasons.push('لا يبدأ بفعل حركي');
@@ -1450,12 +1462,16 @@ export class ScreenplayClassifier {
     // 2. بناء السياق
     const ctx = this.buildContext(line, index, allLines, previousTypes);
 
+    // تحضير النسختين من السطر
+    const rawLine = line;
+    const normalized = this.normalizeForAnalysis(line);
+
     // 3. حساب النقاط لكل نوع
     const scores = {
-      character: this.scoreAsCharacter(line, ctx),
-      dialogue: this.scoreAsDialogue(line, ctx),
-      action: this.scoreAsAction(line, ctx),
-      parenthetical: this.scoreAsParenthetical(line, ctx),
+      character: this.scoreAsCharacter(rawLine, normalized, ctx),
+      dialogue: this.scoreAsDialogue(rawLine, normalized, ctx),
+      action: this.scoreAsAction(rawLine, normalized, ctx),
+      parenthetical: this.scoreAsParenthetical(rawLine, normalized, ctx),
     };
 
     // 4. اختيار الأعلى
@@ -1579,14 +1595,18 @@ export class ScreenplayClassifier {
 
     const ctx = this.buildContext(line, index, allLines, previousTypes);
 
+    // تحضير النسختين من السطر
+    const rawLine = line;
+    const normalized = this.normalizeForAnalysis(line);
+
     // حساب النقاط لكل نوع
-    const characterScore = this.scoreAsCharacter(line, ctx);
-    const dialogueScore = this.scoreAsDialogue(line, ctx);
-    const actionScore = this.scoreAsAction(line, ctx);
-    const parentheticalScore = this.scoreAsParenthetical(line, ctx);
+    const characterScore = this.scoreAsCharacter(rawLine, normalized, ctx);
+    const dialogueScore = this.scoreAsDialogue(rawLine, normalized, ctx);
+    const actionScore = this.scoreAsAction(rawLine, normalized, ctx);
+    const parentheticalScore = this.scoreAsParenthetical(rawLine, normalized, ctx);
 
     // تحسين إضافي: إذا كان السطر يبدأ بفعل حركي، اجعل نقطة الأكشن أعلى
-    const normalizedLine = this.normalizeLine(line);
+    const normalizedLine = normalized;
     if (this.isActionVerbStart(normalizedLine)) {
       actionScore.score += 30;
       actionScore.confidence = 'high';
