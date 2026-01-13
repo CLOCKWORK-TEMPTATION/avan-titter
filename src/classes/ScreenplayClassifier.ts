@@ -59,7 +59,7 @@ export class ScreenplayClassifier {
   static readonly PHOTOMONTAGE_RE = /^\s*[\(\)]*\s*(?:فوتو\s*مونتاج|Photomontage)\s*[\(\)]*\s*$/i;
   static readonly PHOTOMONTAGE_PART_RE = /^\s*[\(\)]*\s*(?:فوتو\s*مونتاج|Photomontage)\s*[\(\)]*/i;
 
-  static readonly KNOWN_PLACES_RE = /^(مسجد|بيت|منزل|شارع|حديقة|مدرسة|جامعة|مكتب|محل|مستشفى|مطعم|فندق|سيارة|غرفة|قاعة|ممر|سطح|ساحة|مقبرة|مخبز|مكتبة|نهر|بحر|جبل|غابة|سوق|مصنع|بنك|محكمة|سجن|موقف|محطة|مطار|ميناء|كوبرى|نفق|مبنى|قصر|قصر عدلي|فندق|نادي|ملعب|ملهى|بار|كازينو|متحف|مسرح|سينما|معرض|مزرعة|مصنع|مختبر|مستودع|محل|مطعم|مقهى|موقف|مكتب|شركة|كهف|الكهف|غرفة الكهف|كهف المرايا)/i;
+  static readonly KNOWN_PLACES_RE = /^(مسجد|بيت|منزل|شارع|حديقة|مدرسة|جامعة|مكتب|محل|مستشفى|مطعم|فندق|سيارة|غرفة|قاعة|ممر|سطح|ساحة|مقبرة|مخبز|مكتبة|نهر|بحر|جبل|غابة|سوق|مصنع|بنك|محكمة|سجن|موقف|محطة|مطار|ميناء|كوبرى|نفق|مبنى|قصر|قصر عدلي|فندق|نادي|ملعب|ملهى|بار|كازينو|متحف|مسرح|سينما|معرض|مزرعة|مصنع|مختبر|مستودع|محل|مطعم|مقهى|موقف|مكتب|شركة|كهف|الكهف|غرفة الكهف|كهف المرايا|كوافير|صالون|حلاق)/i;
 
   static readonly CHARACTER_RE = new RegExp(
     "^\\s*(?:صوت\\s+)?[" +
@@ -244,8 +244,10 @@ export class ScreenplayClassifier {
         timeLocation: string;
         place: string;
         consumedLines: number;
+        remainingAction?: string;
       }
     | null {
+    let remainingAction: string | undefined;
     const parsed = ScreenplayClassifier.parseSceneHeaderFromLine(
       lines[startIndex] || ""
     );
@@ -356,6 +358,20 @@ export class ScreenplayClassifier {
 
       // Check for Known Place (Scene Header 3) - Prioritize over Character
       if (ScreenplayClassifier.KNOWN_PLACES_RE.test(normalizedNext)) {
+        // تحقق من وجود شرطة تفصل المكان عن وصف الأكشن
+        const dashSeparatorMatch = normalizedNext.match(/^([^-–—]+)\s*[-–—]\s*(.+)$/);
+        if (dashSeparatorMatch) {
+          const placePart = dashSeparatorMatch[1].trim();
+          const actionPart = dashSeparatorMatch[2].trim();
+          // تحقق أن الجزء الأول هو مكان معروف
+          if (ScreenplayClassifier.KNOWN_PLACES_RE.test(placePart)) {
+            placeParts.push(placePart);
+            consumedLines++;
+            // حفظ الجزء الثاني ليُعالج كـ action
+            remainingAction = actionPart;
+            break;
+          }
+        }
         placeParts.push(normalizedNext);
         consumedLines++;
         continue;
@@ -390,35 +406,6 @@ export class ScreenplayClassifier {
 
       if (ScreenplayClassifier.isActionVerbStart(normalizedNext)) break;
 
-      // محاولة فصل المكان عن الوصف (Action) إذا وجدنا فاصل
-      // تحديث: جعلنا الـ Regex أكثر مرونة للفصل حتى لو المسافات غير منتظمة
-      const placeActionSplit = normalizedNext.match(/^(.*?)(?:\s*[-–—]\s*)(.+)$/);
-      if (placeActionSplit) {
-        const placePart = (placeActionSplit[1] || "").trim();
-        const actionPart = (placeActionSplit[2] || "").trim();
-
-        // إذا كان الجزء الثاني (الأكشن) موجوداً
-        if (actionPart) {
-          // الشرط: إما أنه يبدو كأكشن (فعل حركي)، أو أنه جملة طويلة نسبياً (وصف مكان)
-          // نتجاوز التدقيق الصارم لأن وجود الفاصل "-" بعد عنوان مشهد غالباً يعني بداية الوصف
-          const isLongDescription = ScreenplayClassifier.wordCount(actionPart) >= 3;
-          const isActionLike = ScreenplayClassifier.isLikelyAction(actionPart);
-
-          if (placePart && (isActionLike || isLongDescription)) {
-            placeParts.push(placePart);
-            
-            // تعديل السطر الحالي ليكون هو الأكشن المتبقي
-            // نضيف شرطة في البداية لضمان تصنيفه كأكشن وتنسيقه بشكل صحيح (كما في طلب المستخدم)
-            lines[i] = actionPart.startsWith("-") ? actionPart : `- ${actionPart}`;
-            
-            // نخرج من الـ loop هنا. 
-            // بما أننا لم نقم بزيادة consumedLines، فإن classifyBatch ستعيد معالجة هذا السطر (lines[i])
-            // ولكن بمحتواه الجديد (الأكشن)، مما سيؤدي لتصنيفه كـ Action منفصل.
-            break;
-          }
-        }
-      }
-
       placeParts.push(normalizedNext);
       consumedLines++;
     }
@@ -436,6 +423,7 @@ export class ScreenplayClassifier {
       timeLocation: cleanedTimeLocation,
       place,
       consumedLines,
+      remainingAction,
     };
   }
 
@@ -690,6 +678,11 @@ export class ScreenplayClassifier {
           results.push({ text: sceneHeaderParts.place, type: "scene-header-3" });
         }
 
+        // إضافة الجزء المتبقي كـ action إذا وُجد
+        if (sceneHeaderParts.remainingAction) {
+          results.push({ text: sceneHeaderParts.remainingAction, type: "action" });
+        }
+
         i += Math.max(0, sceneHeaderParts.consumedLines - 1);
         continue;
       }
@@ -777,7 +770,6 @@ export class ScreenplayClassifier {
     }
 
     // خلاف ذلك، استخدم المنطق القديم (للتوافق)
-    console.log(`🔍 [classifyHybrid] Line: "${current}", PrevType: ${prevType}`);
 
     // 1. فحص المحتوى الصارم (Regex)
     if (this.isSceneHeader1(current)) return 'scene-header-1';
@@ -793,11 +785,9 @@ export class ScreenplayClassifier {
     if (prevType && ['scene-header-1', 'scene-header-2', 'scene-header-top-line'].includes(prevType)) {
       const wordCount = current.split(' ').length;
       const hasColon = current.includes(":") || current.includes("：");
-      console.log(`  ✅ Scene-Header-3 Check: WordCount=${wordCount}, HasColon=${hasColon}`);
       // تحقق أقوى: لا يبدأ بفعل حركي ولا يحتوي على علامات ترقيم
       const normalized = this.normalizeLine(current);
       if (wordCount <= 6 && !hasColon && !this.isActionVerbStart(normalized) && !this.hasSentencePunctuation(normalized)) {
-        console.log(`  ✅ CLASSIFIED AS: scene-header-3`);
         return 'scene-header-3';
       }
     }
@@ -821,7 +811,6 @@ export class ScreenplayClassifier {
     // Parenthetical (ملاحظة)
     if (current.startsWith('(') && ['character', 'dialogue'].includes(prevType || '')) return 'parenthetical';
 
-    console.log(`  ❌ DEFAULT: action`);
     return 'action';
   }
 
