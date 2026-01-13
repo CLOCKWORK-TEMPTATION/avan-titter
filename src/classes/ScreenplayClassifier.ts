@@ -5,9 +5,17 @@
 import { LineContext, ClassificationScore, ClassificationResult, CandidateType, BatchClassificationResult, ReviewableLineUI } from '../types/types';
 
 export class ScreenplayClassifier {
+  // ثوابت الأنماط
   static readonly AR_AB_LETTER = "\u0600-\u06FF";
   static readonly EASTERN_DIGITS = "٠١٢٣٤٥٦٧٨٩";
   static readonly WESTERN_DIGITS = "0123456789";
+  
+  // ثوابت حساب doubtScore
+  /** عتبة الفرق في النقاط بين المرشحين لاعتبار التصنيف غامض */
+  private static readonly SCORE_TIE_THRESHOLD = 5;
+  /** عتبة doubtScore التي عندها يُعتبر السطر يحتاج مراجعة */
+  private static readonly NEEDS_REVIEW_THRESHOLD = 60;
+  
   static readonly ACTION_VERB_LIST =
     "يدخل|يخرج|ينظر|يرفع|تبتسم|ترقد|تقف|يبسم|يضع|يقول|تنظر|تربت|تقوم|يشق|تشق|تضرب|يسحب|يلتفت|يقف|يجلس|تجلس|يجري|تجري|يمشي|تمشي|يركض|تركض|يصرخ|اصرخ|يبكي|تبكي|يضحك|تضحك|يغني|تغني|يرقص|ترقص|يأكل|تأكل|يشرب|تشرب|ينام|تنام|يستيقظ|تستيقظ|يكتب|تكتب|يقرأ|تقرأ|يسمع|تسمع|يشم|تشم|يلمس|تلمس|يأخذ|تأخذ|يعطي|تعطي|يفتح|تفتح|يغلق|تغلق|يبدأ|تبدأ|ينتهي|تنتهي|يذهب|تذهب|يعود|تعود|يأتي|تأتي|يموت|تموت|يحيا|تحيا|يقاتل|تقاتل|ينصر|تنتصر|يخسر|تخسر|يكتب|تكتب|يرسم|ترسم|يصمم|تخطط|تخطط|يقرر|تقرر|يفكر|تفكر|يتذكر|تذكر|يحاول|تحاول|يستطيع|تستطيع|يريد|تريد|يحتاج|تحتاج|يبحث|تبحث|يجد|تجد|يفقد|تفقد|يحمي|تحمي|يحمي|تحمي|يراقب|تراقب|يخفي|تخفي|يكشف|تكشف|يكتشف|تكتشف|يعرف|تعرف|يتعلم|تعلن|يعلم|تعلن|يوجه|وجه|يسافر|تسافر|يعود|تعود|يرحل|ترحل|يبقى|تبقى|ينتقل|تنتقل|يتغير|تتغير|ينمو|تنمو|يتطور|تتطور|يواجه|تواجه|يحل|تحل|يفشل|تفشل|ينجح|تنجح|يحقق|تحقن|يبدأ|تبدأ|ينهي|تنهي|يوقف|توقف|يستمر|تستمر|ينقطع|تنقطع|يرتبط|ترتبط|ينفصل|تنفصل|يتزوج|تتزوج|يطلق|يطلق|يولد|تولد|يكبر|تكبر|يشيخ|تشيخ|يمرض|تمرض|يشفي|تشفي|يصاب|تصيب|يتعافى|تعافي|يموت|يقتل|تقتل|يُقتل|تُقتل|يختفي|تختفي|يظهر|تظهر|يختبئ|تخبوء|يطلب|تطلب|يأمر|تأمر|يمنع|تمنع|يسمح|تسمح|يوافق|توافق|يرفض|ترفض|يعتذر|يشكر|تشكر|يحيي|تحيي|يودع|تودع|يجيب|تجيب|يسأل|تسأل|يصيح|تصيح|يهمس|تهمس|يصمت|تصمت|يتكلم|تتكلم|ينادي|تنادي|يحكي|تحكي|يروي|تروي|يقص|تقص|يضحك|تضحك|يبكي|تبكي|يتنهد|تتنهد|يئن|تئن";
   
@@ -628,9 +636,7 @@ export class ScreenplayClassifier {
   ): string | null {
     for (let i = currentIndex - 1; i >= 0; i--) {
       const prevType = previousTypes[i];
-      if (prevType && prevType !== 'blank' && prevType !== 'action' || 
-          (prevType === 'action' && i < previousTypes.length)) {
-        // تحقق إذا كان action حقيقي أو blank متنكر
+      if (prevType && prevType !== 'blank') {
         return prevType;
       }
     }
@@ -1441,7 +1447,9 @@ export class ScreenplayClassifier {
     
     // 3. تعادل في النقاط العليا
     const maxScore = highest ? highest[1].score : 0;
-    const ties = sortedScores.filter((s: [string, ClassificationScore]) => Math.abs(s[1].score - maxScore) < 5).length;
+    const ties = sortedScores.filter((s: [string, ClassificationScore]) => 
+      Math.abs(s[1].score - maxScore) < ScreenplayClassifier.SCORE_TIE_THRESHOLD
+    ).length;
     if (ties > 1) {
       doubtScore += 20;
     }
@@ -1456,7 +1464,7 @@ export class ScreenplayClassifier {
     const finalDoubtScore = Math.min(100, doubtScore);
     
     // === تحديد الحاجة للمراجعة ===
-    const needsReview = finalDoubtScore >= 60;
+    const needsReview = finalDoubtScore >= ScreenplayClassifier.NEEDS_REVIEW_THRESHOLD;
     
     return { doubtScore: finalDoubtScore, needsReview };
   }
@@ -1498,13 +1506,15 @@ export class ScreenplayClassifier {
    * @param ctx السياق
    * @param prevNonBlankType نوع السطر السابق غير الفارغ
    * @param nextLine السطر التالي
+   * @param currentLine السطر الحالي (للتحقق من الخصائص)
    * @returns النوع المُرجَّح مع السبب أو null
    */
   private static applySmartFallback(
     top2: [CandidateType, CandidateType],
     ctx: LineContext,
     prevNonBlankType: string | null,
-    nextLine: string | null
+    nextLine: string | null,
+    currentLine: string
   ): { type: string; reason: string } | null {
     
     const [first, second] = top2;
@@ -1587,7 +1597,7 @@ export class ScreenplayClassifier {
       }
       
       // إذا ينتهي بنقطتين → character
-      const trimmed = ctx.previousLines[0]?.line?.trim() || '';
+      const trimmed = currentLine.trim();
       if (trimmed.endsWith(':') || trimmed.endsWith('：')) {
         return { 
           type: 'character', 
@@ -1818,7 +1828,8 @@ export class ScreenplayClassifier {
         top2Candidates, 
         ctx, 
         prevNonBlankType, 
-        nextLine
+        nextLine,
+        line
       );
       
       if (fallback && fallback.type !== bestType) {
@@ -1974,7 +1985,7 @@ export class ScreenplayClassifier {
       .map(([pair, count]) => ({ pair, count }));
 
     return {
-      totalLines: results.filter(r => r.type !== 'action' || r.text.trim() !== '').length,
+      totalLines: results.filter(r => r.text.trim() !== '').length,
       needsReviewCount: needsReviewLines.length,
       needsReviewPercentage: Math.round(
         (needsReviewLines.length / Math.max(1, results.length)) * 100
