@@ -52,7 +52,19 @@ export const SceneHeaderAgent = (
     return { html, processed: true };
   }
 
-  if (Patterns.sceneHeader3.test(trimmedLine)) {
+  const normalized = ScreenplayClassifier.normalizeLine(trimmedLine);
+  const wordCount = normalized ? normalized.split(/\s+/).filter(Boolean).length : 0;
+  const hasDash = /[-–—]/.test(normalized);
+  const hasColon = normalized.includes(":") || normalized.includes("：");
+  const hasSentencePunctuation = /[\.!؟\?]/.test(normalized);
+
+  if (
+    Patterns.sceneHeader3.test(trimmedLine) &&
+    wordCount <= 6 &&
+    !hasDash &&
+    !hasColon &&
+    !hasSentencePunctuation
+  ) {
     const element = document.createElement("div");
     element.className = "scene-header-3";
     element.textContent = trimmedLine;

@@ -380,9 +380,20 @@ export class ScreenplayClassifier {
             break;
           }
         }
-        placeParts.push(normalizedNext);
-        consumedLines++;
-        continue;
+        const wordCount = ScreenplayClassifier.wordCount(normalizedNext);
+        const hasColon = normalizedNext.includes(":") || normalizedNext.includes("：");
+        if (
+          wordCount <= 6 &&
+          !hasColon &&
+          !ScreenplayClassifier.isActionVerbStart(normalizedNext) &&
+          !ScreenplayClassifier.hasSentencePunctuation(normalizedNext)
+        ) {
+          placeParts.push(normalizedNext);
+          consumedLines++;
+          continue;
+        }
+
+        break;
       }
 
       const isChar = ScreenplayClassifier.isCharacterLine(normalizedNext, {
