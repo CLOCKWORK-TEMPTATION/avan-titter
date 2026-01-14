@@ -329,15 +329,20 @@ export class EmissionCalculator {
     const trimmed = rawLine.trim();
     const wordCount = ScreenplayClassifier.wordCount(normalized);
 
-    // 1. قصير (اسم مكان عادة كلمة أو كلمتين)
+    // 1. إذا كان يطابق مكان معروف (يمكن أن يكون لديك قائمة بأسماء مواقع معروفة)
+    if (ScreenplayClassifier.KNOWN_PLACES_RE.test(normalized)) {
+      score += 50;
+    }
+
+    // 2. قصير (اسم مكان عادة كلمة أو كلمتين)
     if (wordCount <= 4) score += 15;
 
-    // 2. لا يحتوي علامات ترقيم نهائية
+    // 3. لا يحتوي علامات ترقيم نهائية
     if (!ScreenplayClassifier.hasSentencePunctuation(normalized)) {
       score += 10;
     }
 
-    // 3. لا ينتهي بنقطتين
+    // 4. لا ينتهي بنقطتين
     if (!trimmed.endsWith(':') && !trimmed.endsWith('：')) {
       score += 5;
     }

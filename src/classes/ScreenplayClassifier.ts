@@ -126,12 +126,12 @@ export class ScreenplayClassifier {
 
   /**
    * دالة تصنيف موحدة تدعم كلاً من Greedy و Viterbi
-   * @param text النص الكامل للسيناريو
+   * @param lines مصفوفة السطور النصية
    * @param options خيارات التصنيف
    * @returns مصفوفة من السطور المصنفة
    */
   classify(
-    text: string,
+    lines: string[],
     options: {
       useViterbi?: boolean;
       emissionWeight?: number;
@@ -142,9 +142,9 @@ export class ScreenplayClassifier {
     const { useViterbi = false } = options;
 
     if (useViterbi) {
-      const lines = text.split(/\r?\n/);
       return this.classifyWithViterbi(lines, options);
     } else {
+      const text = lines.join('\n');
       const simpleResults = ScreenplayClassifier.classifyBatch(text, false, this.documentMemory);
       return simpleResults.map(r => ({
         text: r.text,
@@ -2554,6 +2554,8 @@ export class ScreenplayClassifier {
 
   /**
    * دالة للمقارنة بين تصنيف Greedy وتصنيف Viterbi لكل سطر.
+   * تعيد قائمة تبين لكل سطر ما كان تصنيفه الجشع وما أصبح تصنيفه وفق Viterbi وأسباب الاختلاف.
+   * تستخدم لأغراض التشخيص والتجربة.
    */
   compareGreedyVsViterbi(lines: string[]): {
     lineIndex: number;
@@ -2563,10 +2565,14 @@ export class ScreenplayClassifier {
     agreement: boolean;
     viterbiReason?: string;
   }[] {
+    // 1. تصنيف Greedy المعتاد
     const text = lines.join('\n');
     const greedyResults = ScreenplayClassifier.classifyBatch(text, false, this.documentMemory);
+
+    // 2. تصنيف باستخدام Viterbi (دون تحديث الذاكرة أثناء المقارنة حتى لا تتأثر نتائج greedy)
     const viterbiResults = this.classifyWithViterbi(lines, { updateMemory: false });
 
+    // 3. تجميع النتائج المقارنة
     const comparisons: {
       lineIndex: number;
       text: string;
