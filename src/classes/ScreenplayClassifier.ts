@@ -124,6 +124,41 @@ export class ScreenplayClassifier {
     this.documentMemory.clear();
   }
 
+  /**
+   * دالة تصنيف موحدة تدعم كلاً من Greedy و Viterbi
+   * @param text النص الكامل للسيناريو
+   * @param options خيارات التصنيف
+   * @returns مصفوفة من السطور المصنفة
+   */
+  classify(
+    text: string,
+    options: {
+      useViterbi?: boolean;
+      emissionWeight?: number;
+      transitionWeight?: number;
+      updateMemory?: boolean;
+    } = {}
+  ): BatchClassificationResult[] {
+    const { useViterbi = false } = options;
+
+    if (useViterbi) {
+      const lines = text.split(/\r?\n/);
+      return this.classifyWithViterbi(lines, options);
+    } else {
+      const simpleResults = ScreenplayClassifier.classifyBatch(text, false, this.documentMemory);
+      return simpleResults.map(r => ({
+        text: r.text,
+        type: r.type,
+        confidence: 'medium' as const,
+        doubtScore: 30,
+        needsReview: false,
+        top2Candidates: null,
+        fallbackApplied: undefined,
+        viterbiOverride: undefined
+      }));
+    }
+  }
+
   static easternToWesternDigits(s: string): string {
     const map: { [key: string]: string } = {
       "٠": "0",
@@ -2429,5 +2464,129 @@ export class ScreenplayClassifier {
       ),
       topAmbiguousPairs
     };
+  }
+
+  // ============================================================================
+  // دوال Viterbi/HMM
+  // ============================================================================
+
+  /**
+   * تصنيف مجموعة من السطور باستخدام خوارزمية Viterbi للحصول على التسلسل الأمثل.
+   */
+  classifyWithViterbi(
+    lines: string[],
+    options: {
+      emissionWeight?: number;
+      transitionWeight?: number;
+      updateMemory?: boolean;
+    } = {}
+  ): BatchClassificationResult[] {
+    const { ViterbiDecoder } = require('./ViterbiDecoder');
+    const { CandidateType } = require('../types/types');
+
+    const {
+      emissionWeight = 0.6,
+      transitionWeight = 0.4,
+      updateMemory = true
+    } = options;
+
+    if (updateMemory) {
+      this.preProcessForCharacters(lines);
+    }
+
+    const viterbiResults = ViterbiDecoder.decode(
+      lines,
+      this.documentMemory,
+      emissionWeight,
+      transitionWeight
+    );
+
+    const results: BatchClassificationResult[] = [];
+    for (const vr of viterbiResults) {
+      if (updateMemory && vr.type === 'character') {
+        const name = vr.text.replace(/[:：\s]+$/, '').trim();
+        const confidence = vr.text.trim().endsWith(':') ? 'high' : 'medium';
+        this.documentMemory.addCharacter(name, confidence);
+      }
+
+      const sortedEmissions = Object.entries(vr.emissionScores)
+        .sort((a, b) => (b[1] as number) - (a[1] as number));
+      const gap = sortedEmissions[0] && sortedEmissions[1]
+        ? (sortedEmissions[0][1] as number) - (sortedEmissions[1][1] as number)
+        : 100;
+      const doubtScore = gap < 15 ? 80 
+                        : gap < 25 ? 50 
+                        : gap < 40 ? 30 
+                        : 10;
+      const needsReview = doubtScore >= 60 || vr.viterbiOverride;
+
+      results.push({
+        text: vr.text,
+        type: vr.type === 'blank' ? 'action' : vr.type,
+        confidence: vr.confidence,
+        doubtScore,
+        needsReview,
+        top2Candidates: sortedEmissions.length >= 2 ? [
+          {
+            type: sortedEmissions[0][0],
+            score: sortedEmissions[0][1],
+            confidence: 'medium',
+            reasons: []
+          },
+          {
+            type: sortedEmissions[1][0],
+            score: sortedEmissions[1][1],
+            confidence: 'low',
+            reasons: []
+          }
+        ] as [CandidateType, CandidateType] : null,
+        viterbiOverride: vr.viterbiOverride ? {
+          greedyChoice: vr.greedyChoice,
+          viterbiChoice: vr.type,
+          reason: vr.overrideReason || ''
+        } : undefined,
+        fallbackApplied: undefined
+      });
+    }
+
+    return results;
+  }
+
+  /**
+   * دالة للمقارنة بين تصنيف Greedy وتصنيف Viterbi لكل سطر.
+   */
+  compareGreedyVsViterbi(lines: string[]): {
+    lineIndex: number;
+    text: string;
+    greedyType: string;
+    viterbiType: string;
+    agreement: boolean;
+    viterbiReason?: string;
+  }[] {
+    const text = lines.join('\n');
+    const greedyResults = ScreenplayClassifier.classifyBatch(text, false, this.documentMemory);
+    const viterbiResults = this.classifyWithViterbi(lines, { updateMemory: false });
+
+    const comparisons: {
+      lineIndex: number;
+      text: string;
+      greedyType: string;
+      viterbiType: string;
+      agreement: boolean;
+      viterbiReason?: string;
+    }[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      comparisons.push({
+        lineIndex: i,
+        text: lines[i],
+        greedyType: greedyResults[i].type,
+        viterbiType: viterbiResults[i].type,
+        agreement: greedyResults[i].type === viterbiResults[i].type,
+        viterbiReason: viterbiResults[i].viterbiOverride?.reason
+      });
+    }
+
+    return comparisons;
   }
 }
