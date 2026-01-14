@@ -365,6 +365,12 @@ export interface BatchClassificationResult {
         fallbackType: string;
         reason: string;
     };
+    /** معلومات عن تعديل Viterbi */
+    viterbiOverride?: {
+        greedyChoice: string;
+        viterbiChoice: string;
+        reason: string;
+    };
 }
 
 /**
@@ -389,4 +395,60 @@ export interface ReviewableLineUI {
         fallbackType: string;
         reason: string;
     };
+}
+
+// ============================================================================
+// تعريفات نظام Viterbi/HMM
+// ============================================================================
+
+/**
+ * الأنواع المستخدمة في Viterbi (الحالات الممكنة)
+ */
+export type ViterbiState = 
+  | 'basmala'
+  | 'scene-header-1'
+  | 'scene-header-2'
+  | 'scene-header-3'
+  | 'scene-header-top-line'
+  | 'character'
+  | 'dialogue'
+  | 'parenthetical'
+  | 'action'
+  | 'transition'
+  | 'blank';
+
+/** جميع الحالات (states) كمصفوفة لاستخدامها في الحسابات */
+export const ALL_STATES: ViterbiState[] = [
+  'basmala',
+  'scene-header-1',
+  'scene-header-2',
+  'scene-header-3',
+  'scene-header-top-line',
+  'character',
+  'dialogue',
+  'parenthetical',
+  'action',
+  'transition',
+  'blank'
+];
+
+/** تمثيل خلية واحدة في جدول Viterbi لسطر محدد */
+export interface ViterbiCell {
+  state: ViterbiState;
+  score: number;
+  previousState: ViterbiState | null;
+  emissionScore: number;
+  transitionScore: number;
+}
+
+/** خيارات التصنيف */
+export interface ClassificationOptions {
+  /** استخدام خوارزمية Viterbi بدلاً من التصنيف الجشع */
+  useViterbi?: boolean;
+  /** وزن الـ emission scores في حساب المسار (من 0 إلى 1) */
+  emissionWeight?: number;
+  /** وزن الـ transition scores في حساب المسار (من 0 إلى 1) */
+  transitionWeight?: number;
+  /** تحديث ذاكرة المستند أثناء التصنيف */
+  updateMemory?: boolean;
 }
